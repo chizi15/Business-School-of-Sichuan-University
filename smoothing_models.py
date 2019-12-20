@@ -8,16 +8,12 @@ import math
 
 """
     指数平滑类模型：包括单参数模型simple，双参数加法模型linear，双参数乘法模型double_mul，三参数加法模型additive，三参数乘法模型multiplicative，
-    六参数加法多重季节性日序列模型multiseasonal_add_day，五参数加法多重季节性周序列模型multiseasonal_add_week，
-    六参数乘法多重季节性日序列模型multiseasonal_mul_day，五参数乘法多重季节性周序列模型multiseasonal_mul_week。
+    多参数（六参数）加法多重季节性日序列模型multiseasonal_add_day，多参数（五参数）加法多重季节性周序列模型multiseasonal_add_week，
+    多参数（六参数）乘法多重季节性日序列模型multiseasonal_mul_day，多参数（五参数）乘法多重季节性周序列模型multiseasonal_mul_week。
     对于无季节性模型simple、linear、double_mul，min(len(Y)) >= 2，
     对于单一季节性模型additive和multiplicative，min(len(Y)) >= m，
     对于多重季节性模型multiseasonal_add_day、multiseasonal_add_week、multiseasonal_mul_day、multiseasonal_mul_week，min(len(Y)) >= max(m).
-    
-    目标函数可采用能量化两条序列偏离程度且能做梯度下降的RMSE或OLS；在所有平滑类模型
-    
-    
-    计算各模型中预测序列与真实序列在对应日期上的均方根误差。
+    目标函数可采用能量化两条序列偏离程度且能做梯度下降的RMSE或OLS。
 """
 
 
