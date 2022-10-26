@@ -12,7 +12,7 @@ pd.set_option('display.min_rows', 20)
 """
 
 truncated = 1
-cv, n = 2/3, 30
+cv, n = 1, 365
 account = pd.read_csv("D:\Work info\WestUnion\data\账表销售.csv", parse_dates=['busdate'])
 print(f'account {account.shape}')
 commodity = pd.read_csv("D:\Work info\WestUnion\data\商品资料.csv")
@@ -37,47 +37,29 @@ acct_comty_stk = acct_comty_stk[cloumns]
 match truncated:
     case 1:  # keep rest days
         acct_comty_stk = acct_comty_stk[(acct_comty_stk['amou_stock'] == 0) & (acct_comty_stk['sum_disc'] == 0)]
-        print(f'acct_comty_stk truncated {acct_comty_stk.shape}')
-        codes_group = acct_comty_stk.groupby(['code'])
-        codes_cv = codes_group['amount'].agg(np.std) / codes_group['amount'].agg(np.mean)
-        codes_cv.sort_values(inplace=True)
-        codes_filter = codes_cv[(codes_cv > 0).values & (codes_cv <= cv).values].index.values
-        print(f'经变异系数cv筛选后剩余单品数：{len(codes_filter)}')
-        df = pd.DataFrame()
-        for _ in range(len(codes_filter)):
-            df = pd.concat([df, codes_group.get_group(codes_filter[_])])
-        print(f'经变异系数cv筛选后剩余单品的历史销售总天数：{len(df)}')
-        codes_filter_longer = df.groupby(['code']).agg('count')[(df.groupby(['code']).agg('count') >= n)['amount']].index.values
-        print(f'经变异系数cv且销售天数n筛选后的单品数：{len(codes_filter_longer)}')
-        account_filter = pd.DataFrame()
-        for _ in range(len(codes_filter_longer)):
-            account_filter = pd.concat([account_filter, acct_comty_stk[acct_comty_stk['code'] == codes_filter_longer[_]]])
-        print(f'经变异系数cv且销售天数n筛选后剩余单品的历史销售总天数：{len(account_filter)}')
-        account_filter.index.name = '账表原始索引'
-        account_filter.to_csv(f'D:\Work info\WestUnion\data\合并账表筛选truncated{-truncated}-cv{-cv:.2f}.csv')
-        print(f'acct_comty_stk truncated finally {account_filter.shape}')
     case 2:  # delete rest days
         acct_comty_stk = acct_comty_stk[(acct_comty_stk['amou_stock'] == 0) & (acct_comty_stk['sum_disc'] == 0) & \
                                         (~acct_comty_stk['is_holiday'])]
-        print(f'acct_comty_stk truncated {acct_comty_stk.shape}')
-        codes_group = acct_comty_stk.groupby(['code'])
-        codes_cv = codes_group['amount'].agg(np.std) / codes_group['amount'].agg(np.mean)
-        codes_cv.sort_values(inplace=True)
-        codes_filter = codes_cv[(codes_cv > 0).values & (codes_cv <= cv).values].index.values
-        print(f'经变异系数cv筛选后剩余单品数：{len(codes_filter)}')
-        df = pd.DataFrame()
-        for _ in range(len(codes_filter)):
-            df = pd.concat([df, codes_group.get_group(codes_filter[_])])
-        print(f'经变异系数cv筛选后剩余单品的历史销售总天数：{len(df)}')
-        codes_filter_longer = df.groupby(['code']).agg('count')[(df.groupby(['code']).agg('count') >= n)['amount']].index.values
-        print(f'经变异系数cv且销售天数n筛选后的单品数：{len(codes_filter_longer)}')
-        account_filter = pd.DataFrame()
-        for _ in range(len(codes_filter_longer)):
-            account_filter = pd.concat([account_filter, acct_comty_stk[acct_comty_stk['code'] == codes_filter_longer[_]]])
-        print(f'经变异系数cv且销售天数n筛选后剩余单品的历史销售总天数：{len(account_filter)}')
-        account_filter.index.name = '账表原始索引'
-        account_filter.to_csv(f'D:\Work info\WestUnion\data\合并账表筛选truncated{-truncated}-cv{-cv:.2f}.csv')
-        print(f'acct_comty_stk truncated finally {account_filter.shape}')
     case _:
         acct_comty_stk.index.name = '账表原始索引'
         acct_comty_stk.to_csv('D:\Work info\WestUnion\data\合并账表未筛选.csv')
+
+print(f'acct_comty_stk truncated {acct_comty_stk.shape}')
+codes_group = acct_comty_stk.groupby(['code'])
+codes_cv = codes_group['amount'].agg(np.std) / codes_group['amount'].agg(np.mean)
+codes_cv.sort_values(inplace=True)
+codes_filter = codes_cv[(codes_cv > 0).values & (codes_cv <= cv).values].index.values
+print(f'经变异系数cv筛选后剩余单品数：{len(codes_filter)}')
+df = pd.DataFrame()
+for _ in range(len(codes_filter)):
+    df = pd.concat([df, codes_group.get_group(codes_filter[_])])
+print(f'经变异系数cv筛选后剩余单品的历史销售总天数：{len(df)}')
+codes_filter_longer = df.groupby(['code']).agg('count')[(df.groupby(['code']).agg('count') >= n)['amount']].index.values
+print(f'经变异系数cv且销售天数n筛选后的单品数：{len(codes_filter_longer)}')
+account_filter = pd.DataFrame()
+for _ in range(len(codes_filter_longer)):
+    account_filter = pd.concat([account_filter, acct_comty_stk[acct_comty_stk['code'] == codes_filter_longer[_]]])
+print(f'经变异系数cv且销售天数n筛选后剩余单品的历史销售总天数：{len(account_filter)}')
+account_filter.index.name = '账表原始索引'
+account_filter.to_csv(f'D:\Work info\WestUnion\data\合并账表筛选truncated-{truncated}--cv-{cv:.2f}--len-{n}.csv')
+print(f'acct_comty_stk truncated finally {account_filter.shape}')
