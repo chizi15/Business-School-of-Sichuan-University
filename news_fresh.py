@@ -2,17 +2,8 @@ import pandas as pd
 import numpy as np
 import chinese_calendar as calendar
 pd.set_option('display.max_columns', None)
-pd.set_option('display.min_rows', 200)
-"""
-1. 流水表中sum_sell是每笔销售中该code的实收金额，sum_disc是该code的让利金额，二者相加是该code的正价应收金额；
-所以在流水表和账表中按sum_disc==0来筛选，就能得到正价的销售；所以在账表中，sum_price < sum_cost，当日该code的毛利就为负，
-与sum_disc的大小无关。
-2. 流水表中sum_sell按code来groupby，再按日汇总，就是账表中每个code每日的sum_price。
-3. 库存表可用来筛选每个code在哪些天无剩余库存，即当日卖完，再关联账表中的sum_disc，若也为0，则该code在当天是正价售完，可视为正价真实需求。
-4. 工业品按sku来给国际条码，生成code，生鲜按销售的单品来自建条码，形成code；
-即同一企业同一门店下，至少要按code来groupby或者merge，可得以单品为单位的信息；对同一企业的多门店，至少要按organ和code来groupby或者merge；
-对多企业，至少要按cpnid,organ,code来groupyby或者merge.
-"""
+pd.set_option('display.min_rows', 20)
+
 
 process_type = 3  # 1: fundamental sheets process; 2: running; 3: forecasting and newsvendor comparison
 match process_type:
