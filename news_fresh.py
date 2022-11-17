@@ -211,5 +211,5 @@ match process_type:
             organ_pred = organ_pred_all[organ_pred_all['organ'] == list(organ_sale_all.groupby('organ').groups.keys())[_]]['predict']
             alpha.append(np.median(abs((organ_pred - organ_sale) / (news_order - organ_sale))))
 
-        print('\n', 'alpha:', '\n', pd.Series(alpha), '\n', '\n', 'ppfx(i.e. prophet ratio):', '\n',
+        print('\n', 'alpha:', '\n', pd.Series(alpha), '\n', '\n', 'ppfx(i.e. gross margin ratio):', '\n',
               ppfx_all['ppfx'].loc[:len(organ_sale_all.groupby('organ').groups.keys())-1])
