@@ -8,21 +8,31 @@ import datetime
 
 pd.set_option('display.max_columns', None)
 pd.set_option('display.min_rows', 20)
+"""
+1. 流水表中sum_sell是每笔销售中该code的实收金额，sum_disc是该code的让利金额，二者相加是该code的正价应收金额；
+所以在流水表和账表中按sum_disc==0来筛选，就能得到正价的销售；所以在账表中，sum_price < sum_cost，当日该code的毛利就为负，
+与sum_disc的大小无关。
+2. 流水表中sum_sell按code来groupby，再按日汇总，就是账表中每个code每日的sum_price。
+3. 库存表可用来筛选每个code在哪些天无剩余库存，即当日卖完，再关联账表中的sum_disc，若也为0，则该code在当天是正价售完，可视为正价真实需求。
+4. 工业品按sku来给国际条码，生成code，生鲜按销售的单品来自建条码，形成code；
+即同一企业同一门店下，至少要按code来groupby或者merge，可得以单品为单位的信息；对同一企业的多门店，至少要按organ和code来groupby或者merge；
+对多企业，至少要按cpnid,organ,code来groupyby或者merge.
+"""
 
 
 process_type = 3  # 1: fundamental sheets process; 2: running; 3: forecasting and newsvendor comparison
 match process_type:
     case 1:
-        cv, n = 1/3, 365/2
-        account = pd.read_csv("D:\Work info\WestUnion\data\origin\\account.csv",
+        cv, n = 1/1, 365/2
+        account = pd.read_csv("D:\Work info\WestUnion\data\origin\\haolinju\\account.csv",
                               parse_dates=['busdate'], infer_datetime_format=True, dtype={'code': str})
         print(f'\naccount\n\nshape: {account.shape}\n\ndtypes:\n{account.dtypes}\n\nisnull-columns:\n{account.isnull().any()}'
               f'\n\nisnull-rows:\n{sum(account.isnull().T.any())}\n')
-        commodity = pd.read_csv("D:\Work info\WestUnion\data\origin\\commodity.csv",
+        commodity = pd.read_csv("D:\Work info\WestUnion\data\origin\\haolinju\\commodity.csv",
                                 dtype={'code': str, 'sm_sort': str, 'md_sort': str, 'bg_sort': str})
         print(f'\ncommodity\n\nshape: {commodity.shape}\n\ndtypes:\n{commodity.dtypes}\n\nisnull-columns:\n'
               f'{commodity.isnull().any()}\n\nisnull-rows:\n{sum(commodity.isnull().T.any())}\n')
-        stock = pd.read_csv("D:\Work info\WestUnion\data\origin\\stock.csv",
+        stock = pd.read_csv("D:\Work info\WestUnion\data\origin\\haolinju\\stock.csv",
                             parse_dates=['busdate'], infer_datetime_format=True, dtype={'code': str})
         print(f'\nstock\n\nshape: {stock.shape}\n\ndtypes:\n{stock.dtypes}\n\nisnull-columns:\n'
               f'{stock.isnull().any()}\n\nisnull-rows:\n{sum(stock.isnull().T.any())}\n')
@@ -57,12 +67,13 @@ match process_type:
         match truncated:
             case 1:  # keep rest days
                 acct_comty_stk = acct_comty_stk[(acct_comty_stk['amou_stock'] == 0) & (acct_comty_stk['sum_disc'] == 0)]
+
             case 2:  # delete rest days
                 acct_comty_stk = acct_comty_stk[(acct_comty_stk['amou_stock'] == 0) & (acct_comty_stk['sum_disc'] == 0) & \
                                                 (~acct_comty_stk['is_holiday'])]
             case 'no':
                 acct_comty_stk.index.name = 'account_original_index'
-                acct_comty_stk.to_csv('D:\Work info\WestUnion\data\processed\merge-sheets-no-truncated-no-screen.csv',
+                acct_comty_stk.to_csv('D:\Work info\WestUnion\data\processed\haolinju\merge-sheets-no-truncated-no-screen.csv',
                                       encoding='utf_8_sig')
 
         print(f'acct_comty_stk truncated {acct_comty_stk.shape}')
@@ -79,31 +90,35 @@ match process_type:
         print(f'经变异系数cv且销售天数n筛选后的单品数：{len(codes_filter_longer)}')
         account_filter = pd.DataFrame()
         for _ in range(len(codes_filter_longer)):
-            account_filter = pd.concat([account_filter, acct_comty_stk[acct_comty_stk['code'] == codes_filter_longer[_]]])
+            account_filter = pd.concat([account_filter, acct_comty_stk[
+                (np.sum(acct_comty_stk[['organ', 'code']].values == codes_filter_longer[_], axis=1) == 2)]])
         print(f'经变异系数cv且销售天数n筛选后剩余单品的历史销售总天数：{len(account_filter)}')
         account_filter.index.name = 'account_original_index'
-        account_filter.to_csv(f'D:\Work info\WestUnion\data\processed\merge-sheets-truncated-{truncated}--'
+        account_filter.to_csv(f'D:\Work info\WestUnion\data\processed\haolinju\merge-sheets-truncated-{truncated}--'
                               f'cv-{cv:.2f}--len-{round(n)}.csv', encoding='utf_8_sig')
         print(f'acct_comty_stk truncated finally {account_filter.shape}')
 
     case 2:
-        running = pd.read_csv("D:\Work info\WestUnion\data\origin\\running.csv",
-                              parse_dates=['selldate', 'selltime'], infer_datetime_format=True, dtype={'code': str})
+        running = pd.read_csv("D:\Work info\WestUnion\data\origin\\haolinju\\running.csv",
+                              parse_dates=['selldate'], dtype={'code': str})
+        running['selltime'] = running['selltime'].apply(lambda x: x[:8])  # 截取出时分秒
+        running['selltime'] = pd.to_datetime(running['selltime'], format='%H:%M:%S')
+        running['selltime'] = running['selltime'].dt.time  # 去掉to_datetime自动生成的年月日
         print(f'\nrunning\n\nshape: {running.shape}\n\ndtypes:\n{running.dtypes}\n\nisnull-columns:\n'
               f'{running.isnull().any()}\n\nisnull-rows:\n{sum(running.isnull().T.any())}\n')
 
     case 3:
-        account = pd.read_csv("D:\Work info\WestUnion\data\origin\\account.csv",
+        account = pd.read_csv("D:\Work info\WestUnion\data\origin\\haolinju\\account.csv",
                               parse_dates=['busdate'], infer_datetime_format=True, dtype={'code': str})
-        commodity = pd.read_csv("D:\Work info\WestUnion\data\origin\\commodity.csv",
+        commodity = pd.read_csv("D:\Work info\WestUnion\data\origin\\haolinju\\commodity.csv",
                                 dtype={'code': str, 'sm_sort': str, 'md_sort': str, 'bg_sort': str})
-        stock = pd.read_csv("D:\Work info\WestUnion\data\origin\\stock.csv",
+        stock = pd.read_csv("D:\Work info\WestUnion\data\origin\\haolinju\\stock.csv",
                             parse_dates=['busdate'], infer_datetime_format=True, dtype={'code': str})
         acct_comty = pd.merge(account, commodity, how='left', on=['class', 'code'])
         acct_comty_stk = pd.merge(acct_comty, stock, how='left', on=['organ', 'class', 'code', 'busdate'])
         if sum(acct_comty_stk.isnull().T.any()) > 0:
             acct_comty_stk.drop(index=acct_comty_stk[acct_comty_stk.isnull().T.any()].index, inplace=True)
-        pred = pd.read_csv("D:\Work info\WestUnion\data\origin\\fresh-forecast-order.csv",
+        pred = pd.read_csv("D:\Work info\WestUnion\data\origin\\haolinju\\fresh-forecast-order.csv",
                            parse_dates=['busdate'], infer_datetime_format=True,
                            dtype={'bg_sort': str, 'md_sort': str, 'sm_sort': str, 'code': str},
                            names=['Unnamed', 'organ', 'class', 'bg_sort', 'bg_sort_name', 'md_sort', 'md_sort_name',
@@ -125,7 +140,7 @@ match process_type:
         #                 / (pred_acct_comty_stk['predict'] + pred_acct_comty_stk['theory_sale']))
         # pred_acct_comty_stk = pred_acct_comty_stk[smape <= 1/3]
         # 注意，print(f’‘)里{}外不能带:,{}内带:表示设置数值类型
-        pred_acct_comty_stk.to_csv(f'D:\Work info\WestUnion\data\processed\process_type-{process_type}-'  
+        pred_acct_comty_stk.to_csv(f'D:\Work info\WestUnion\data\processed\haolinju\process_type-{process_type}-'  
                                    f'pred_acct_comty_stk_dropna.csv', index=False, encoding='utf_8_sig')
         group_organ = pred_acct_comty_stk.groupby(['organ'], as_index=False)
         profit_organ = pd.DataFrame(round((group_organ['sum_price'].sum()['sum_price'] - group_organ['sum_cost'].sum()['sum_cost']) /
@@ -160,7 +175,7 @@ match process_type:
                      'sm_sort', 'sm_sort_name', 'code', 'name']]
         profit_all = pd.concat([profit_organ, profit_class, profit_big, profit_mid, profit_small, profit_code],
                                ignore_index=True)
-        profit_all.to_csv(f'D:\Work info\WestUnion\data\processed\profit_all.csv', encoding='utf_8_sig')
+        profit_all.to_csv(f'D:\Work info\WestUnion\data\processed\haolinju\profit_all.csv', encoding='utf_8_sig')
         # delete the rows whose gross margin is larger than 200%
         profit_all.drop(profit_all[profit_all['GrossMargin(%)'] > 200].index, inplace=True)
         # 'common'(10): cauchy, chi2, expon, exponpow, gamma, lognorm, norm, powerlaw, irayleigh, uniform.
