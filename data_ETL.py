@@ -1,7 +1,13 @@
 import pandas as pd
+import chinese_calendar as calendar
 
 pd.set_option('display.max_columns', None)
 pd.set_option('display.min_rows', 20)
+"""
+1. 虽然流水表和账表都是在销售日期才有记录，但流水表是按时间戳记录，账表按日期记录，所以前者行数更多。
+2. 虽然库存表和账表都是按销售日期记录，但库存表是记录每天所有的organ code，账表只记录每天发生销售的organ code，所以前者行数更多。
+3. A：广汉；B：巴中；C、H：成都；D：都江堰；E：马尔康；F：广元；G：南充西充县
+"""
 
 
 # read and summerize data
@@ -37,7 +43,18 @@ run_grup = running.groupby(["organ", "code"])
 print(f'\nrunning\n\nshape: {running.shape}\n\ndtypes:\n{running.dtypes}\n\nisnull-columns:\n{running.isnull().any()}'
       f'\n\nisnull-rows:\n{sum(running.isnull().T.any())}\n\nnumber of commodities:\n{len(run_grup)}\n')
 
-# merge data
+# merge data and generate others
+account['weekday'] = account['busdate'].apply(lambda x: x.weekday() + 1)  # the label of Monday is 0, so +1
+df = pd.DataFrame(list(account['busdate'].apply(lambda x: calendar.get_holiday_detail(x))),
+                  columns=['is_holiday', 'hol_type'])  # (True, None) is weekend, (False, 某节日)是指当天因某日调休而补班
+print(f'\ndf\n\nshape: {df.shape}\n\ndtypes:\n{df.dtypes}\n\nisnull-columns:\n{df.isnull().any()}'
+      f'\n\nisnull-rows, i.e. the number of rows of non-holiday:\n{sum(df.isnull().T.any())}\n')
+if sum(df.isnull().T.any()) > 0:
+    df.loc[df.isnull().T.any(), 'hol_type'] = '0'  # 将非节假日标为0
+    print(f'\ndf\n\nshape: {df.shape}\n\ndtypes:\n{df.dtypes}\n\nisnull-columns:\n{df.isnull().any()}'
+          f'\n\nisnull-rows, i.e. the number of rows of non-holiday:\n{sum(df.isnull().T.any())}\n')
+account = pd.concat([account, df], axis=1)
+
 acct_pred = pd.merge(account, pred, how='left', on=['organ', 'code', 'busdate'])
 acct_pred_grup = acct_pred.groupby(["organ", "code"])
 print(f'\nacct_pred\n\nshape: {acct_pred.shape}\n\ndtypes:\n{acct_pred.dtypes}\n\nisnull-columns:\n{acct_pred.isnull().any()}'
@@ -52,18 +69,20 @@ print(f'\nacct_pred_com_stk\n\nshape: {acct_pred_com_stk.shape}\n\ndtypes:\n{acc
       f'\n\nisnull-rows:\n{sum(acct_pred_com_stk.isnull().T.any())}\n\nnumber of commodities:\n{len(acct_pred_com_stk_grup)}\n')
 running_grup = running.groupby(['organ', 'code', 'selldate'], as_index=False).sum()
 running_grup.rename(columns={'selldate': 'busdate', 'amount': 'amount_run', 'sum_sell': 'sum_price_run'}, inplace=True)
-acct_pred_com_stk_run = pd.merge(acct_pred_com_stk, running_grup, how='left', on=['organ', 'code', 'busdate'])
 
 # export to sheet
-chosen = 1
+acct_pred_com_stk_run = pd.merge(acct_pred_com_stk, running_grup, how='left', on=['organ', 'code', 'busdate'])
+chosen = 4
 if chosen == 1:
     chosen = 'origin'
 elif chosen == 2:
     chosen = 'drop_fcst_na'
 elif chosen == 3:
     chosen = 'exact'
+elif chosen == 4:
+    chosen = 'exact_dropna'
 else:
-    chosen = 'exact_drop'
+    chosen = 'exact_dropna_few_colm'
 match chosen:
     case 'origin':
         acct_pred_com_stk_run.to_csv(f"D:\Work info\WestUnion\data\processed\dehui\\acct_pred_com_stk_run_{chosen}.csv",
@@ -77,11 +96,20 @@ match chosen:
             (acct_pred_com_stk_run['sum_price_run'] == acct_pred_com_stk_run['sum_price'])]
         acct_pred_com_stk_run.to_csv(f"D:\Work info\WestUnion\data\processed\dehui\\acct_pred_com_stk_run_{chosen}.csv",
                                      encoding='utf_8_sig', index=False)
-    case _:
+    case 'exact_dropna':
         acct_pred_com_stk_run = acct_pred_com_stk_run[(acct_pred_com_stk_run['amount_run'] == acct_pred_com_stk_run['amount']) &
                                               (acct_pred_com_stk_run['sum_price_run'] == acct_pred_com_stk_run[
                                                   'sum_price'])]
-        acct_pred_com_stk_run.dropna(subset=['fcstamou', 'amount'], inplace=True)
+        acct_pred_com_stk_run.dropna(subset=['fcstamou', 'amount', 'amount_run', 'sum_price_run'], inplace=True)
+        acct_pred_com_stk_run.to_csv(f"D:\Work info\WestUnion\data\processed\dehui\\acct_pred_com_stk_run_{chosen}.csv",
+                                     encoding='utf_8_sig', index=False)
+    case _:
+        acct_pred_com_stk_run = acct_pred_com_stk_run[(acct_pred_com_stk_run['amount_run'] == acct_pred_com_stk_run['amount']) &
+                                                      (acct_pred_com_stk_run['sum_price_run'] == acct_pred_com_stk_run[
+                                                          'sum_price'])]
+        acct_pred_com_stk_run.dropna(subset=['fcstamou', 'amount', 'amount_run', 'sum_price_run'], inplace=True)
+        acct_pred_com_stk_run.drop(columns=['amount_run', 'sum_price_run', 'sum_disc', 'stock_amou', 'unit', 'spec',
+                                            'sum_price', 'sum_cost'], inplace=True)
         acct_pred_com_stk_run.to_csv(f"D:\Work info\WestUnion\data\processed\dehui\\acct_pred_com_stk_run_{chosen}.csv",
                                      encoding='utf_8_sig', index=False)
 
@@ -89,3 +117,14 @@ acct_pred_com_stk_run_grup = acct_pred_com_stk_run.groupby(["organ", "code"])
 print(f'\nacct_pred_com_stk_run\n\nshape: {acct_pred_com_stk_run.shape}\n\ndtypes:\n{acct_pred_com_stk_run.dtypes}'
       f'\n\nisnull-columns:\n{acct_pred_com_stk_run.isnull().any()}\n\nisnull-rows:\n'
       f'{sum(acct_pred_com_stk_run.isnull().T.any())}\n\nnumber of commodities:\n{len(acct_pred_com_stk_run_grup)}\n')
+
+# export by organs, to reduce the total rows, to reach the limitation of tableau public
+for _ in range(len(acct_pred_com_stk_run.groupby('organ'))):
+    acct_pred_com_stk_run_org = acct_pred_com_stk_run[acct_pred_com_stk_run['organ'] ==
+        acct_pred_com_stk_run.groupby('organ', as_index=False).size()['organ'][_]]
+    acct_pred_com_stk_run_org.to_csv(f'D:\Work info\WestUnion\data\processed\dehui\organ\\'
+                                     f'{acct_pred_com_stk_run.groupby("organ", as_index=False).size()["organ"][_]}\\'
+                                     f'acct_pred_com_stk_run_{chosen}_'
+                                     f'{acct_pred_com_stk_run.groupby("organ", as_index=False).size()["organ"][_][-1]}.csv')
+    if len(acct_pred_com_stk_run_org) != acct_pred_com_stk_run.groupby('organ', as_index=True).size().values[_]:
+        raise Exception('按门店分解df时行数不对')
