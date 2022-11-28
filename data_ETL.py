@@ -3,13 +3,6 @@ import chinese_calendar as calendar
 
 pd.set_option('display.max_columns', None)
 pd.set_option('display.min_rows', 20)
-"""
-1. 虽然流水表和账表都是在销售日期才有记录，但流水表是按时间戳记录，账表按日期记录，所以前者行数更多。
-2. 虽然库存表和账表都是按销售日期记录，但库存表是记录每天所有的organ code，账表只记录每天发生销售的organ code，所以前者行数更多。
-3. A：广汉；B：巴中；C、H：成都；D：都江堰；E：马尔康；F：广元；G：南充西充县
-4. 流水表中sum_sell是每笔小票在该code中的实收金额，所以 sum_sell / amount 就是实售单价；
-sum_disc是让利金额，所以 sum_sell + sum_disc 就是正价应收金额。
-"""
 
 
 # read and summerize data
