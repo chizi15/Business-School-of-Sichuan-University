@@ -5,14 +5,31 @@ from fitter import Fitter
 import scipy.stats as st
 import matplotlib.pyplot as plt
 import datetime
+import sys
 
 pd.set_option('display.max_columns', None)
 pd.set_option('display.min_rows', 20)
+"""
+1. 流水表中sum_sell是每笔销售中该code的实收金额，sum_disc是该code的让利金额，二者相加是该code的正价应收金额；
+所以在流水表和账表中按sum_disc==0来筛选，就能得到正价的销售；所以在账表中，sum_price < sum_cost，当日该code的毛利就为负，
+与sum_disc的大小无关。
+2. 流水表中sum_sell按code来groupby，再按日汇总，就是账表中每个code每日的sum_price。
+3. 库存表可用来筛选每个code在哪些天无剩余库存，即当日卖完，再关联账表中的sum_disc，若也为0，则该code在当天是正价售完，可视为正价真实需求。
+4. 工业品按sku来给国际条码，生成code，生鲜按销售的单品来自建条码，形成code；
+即同一企业同一门店下，至少要按code来groupby或者merge，可得以单品为单位的信息；对同一企业的多门店，至少要按organ和code来groupby或者merge；
+对多企业，至少要按cpnid,organ,code来groupyby或者merge.
+"""
 
 
-process_type = 3  # 1: fundamental sheets process; 2: running; 3: forecasting and newsvendor comparison
+process_type = 0
+if process_type == 1:
+    process_type = 'fundamental sheets process'
+elif process_type == 2:
+    process_type = 'running'
+else:
+    process_type = 'forecasting and newsvendor comparison'
 match process_type:
-    case 1:
+    case 'fundamental sheets process':
         cv, n = 1/1, 365/2
         account = pd.read_csv("D:\Work info\WestUnion\data\origin\\haolinju\\account.csv",
                               parse_dates=['busdate'], infer_datetime_format=True, dtype={'code': str})
@@ -53,18 +70,24 @@ match process_type:
                    'amou_stock', 'sum_stock', 'costprice']
         acct_comty_stk = acct_comty_stk[cloumns]
 
-        truncated = 1  # 1: keep rest days; 2: delete rest days; 'no': no delete
+        truncated = 1
+        if truncated == 1:
+            truncated = 'keep rest days'
+        elif truncated == 2:
+            truncated = 'delete rest days'
+        else:
+            truncated = 'no delete'
         match truncated:
-            case 1:  # keep rest days
+            case 'keep rest days':
                 acct_comty_stk = acct_comty_stk[(acct_comty_stk['amou_stock'] == 0) & (acct_comty_stk['sum_disc'] == 0)]
 
-            case 2:  # delete rest days
+            case 'delete rest days':
                 acct_comty_stk = acct_comty_stk[(acct_comty_stk['amou_stock'] == 0) & (acct_comty_stk['sum_disc'] == 0) & \
                                                 (~acct_comty_stk['is_holiday'])]
-            case 'no':
-                acct_comty_stk.index.name = 'account_original_index'
+            case _:
                 acct_comty_stk.to_csv('D:\Work info\WestUnion\data\processed\haolinju\merge-sheets-no-truncated-no-screen.csv',
-                                      encoding='utf_8_sig')
+                                      encoding='utf_8_sig', index=False)
+                sys.exit()
 
         print(f'acct_comty_stk truncated {acct_comty_stk.shape}')
         codes_group = acct_comty_stk.groupby(['organ', 'code'])
@@ -88,7 +111,7 @@ match process_type:
                               f'cv-{cv:.2f}--len-{round(n)}.csv', encoding='utf_8_sig')
         print(f'acct_comty_stk truncated finally {account_filter.shape}')
 
-    case 2:
+    case 'running':
         running = pd.read_csv("D:\Work info\WestUnion\data\origin\\haolinju\\running.csv",
                               parse_dates=['selldate'], dtype={'code': str})
         running['selltime'] = running['selltime'].apply(lambda x: x[:8])  # 截取出时分秒
@@ -97,7 +120,7 @@ match process_type:
         print(f'\nrunning\n\nshape: {running.shape}\n\ndtypes:\n{running.dtypes}\n\nisnull-columns:\n'
               f'{running.isnull().any()}\n\nisnull-rows:\n{sum(running.isnull().T.any())}\n')
 
-    case 3:
+    case 'forecasting and newsvendor comparison':
         account = pd.read_csv("D:\Work info\WestUnion\data\origin\\haolinju\\account.csv",
                               parse_dates=['busdate'], infer_datetime_format=True, dtype={'code': str})
         commodity = pd.read_csv("D:\Work info\WestUnion\data\origin\\haolinju\\commodity.csv",
