@@ -54,11 +54,13 @@ print(f'\ncommodity\n\nshape: {commodity.shape}\n\ndtypes:\n{commodity.dtypes}\n
       f'{commodity.isnull().any()}\n\nisnull-rows:\n{sum(commodity.isnull().T.any())}\n')
 print(f'\nprediction\n\nshape: {prediction.shape}\n\ndtypes:\n{prediction.dtypes}\n\nisnull-columns:\n'
       f'{prediction.isnull().any()}\n\nisnull-rows:\n{sum(prediction.isnull().T.any())}\n')
+
 # screening other four sheets by requirement
 acct_seg = account[account['code'].isin(comodt_seg['code'])]
 run_seg = running[running['code'].isin(comodt_seg['code'])]
 stok_seg = stock[stock['code'].isin(comodt_seg['code'])]
 pred_seg = prediction[prediction['code'].isin(comodt_seg['code'])]
+
 # merge sheets in order
 match organ:
     case 'DH':
@@ -74,6 +76,7 @@ match organ:
         com_acct_stk_pred_seg = pd.merge(com_acct_stk_seg, pred_seg, how='outer',
                                          on=['organ', 'class', 'bg_sort', 'md_sort', 'sm_sort', 'code', 'busdate'])
         com_acct_stk_pred_seg = pd.merge(com_acct_stk_pred_seg, prom_seg, how='left', on=['organ', 'code', 'busdate'])
+
 # derive merged sheet and running sheet
 com_acct_stk_pred_seg.to_csv(f"D:\Work info\WestUnion\data\processed\\{organ}\\com_acct_stk_pred_{sort}.csv",
                              encoding='utf_8_sig', index=False)
