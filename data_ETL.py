@@ -1,35 +1,46 @@
 import pandas as pd
 import chinese_calendar as calendar
-
 pd.set_option('display.max_columns', None)
 pd.set_option('display.min_rows', 20)
 
 
+chosen = 0
+if chosen == 1:
+    chosen = 'origin'
+elif chosen == 2:
+    chosen = 'drop_fcst_na'
+elif chosen == 3:
+    chosen = 'exact'
+elif chosen == 4:
+    chosen = 'exact_dropna'
+else:
+    chosen = 'exact_dropna_few_colm'
+
 # read and summerize data
-account = pd.read_csv("D:\Work info\WestUnion\data\origin\dehui\\account.csv")
+account = pd.read_csv("D:\Work info\WestUnion\data\origin\DH\\account.csv")
 account['busdate'] = pd.to_datetime(account['busdate'], infer_datetime_format=True)
 account['code'] = account['code'].astype('str')
 acct_grup = account.groupby(["organ", "code"])
 print(f'\naccount\n\nshape: {account.shape}\n\ndtypes:\n{account.dtypes}\n\nisnull-columns:\n{account.isnull().any()}'
       f'\n\nisnull-rows:\n{sum(account.isnull().T.any())}\n\nnumber of commodities:\n{len(acct_grup)}\n')
-pred = pd.read_csv("D:\Work info\WestUnion\data\origin\dehui\prediction.csv")
+pred = pd.read_csv("D:\Work info\WestUnion\data\origin\DH\prediction.csv")
 pred['busdate'] = pd.to_datetime(pred['busdate'])
 pred['code'] = pred['code'].astype('str')
 pred_grup = pred.groupby(["organ", "code"])
 print(f'\npred\n\nshape: {pred.shape}\n\ndtypes:\n{pred.dtypes}\n\nisnull-columns:\n{pred.isnull().any()}'
       f'\n\nisnull-rows:\n{sum(pred.isnull().T.any())}\n\nnumber of commodities:\n{len(pred_grup)}\n')
-commodity = pd.read_csv("D:\Work info\WestUnion\data\origin\dehui\commodity.csv")
+commodity = pd.read_csv("D:\Work info\WestUnion\data\origin\DH\commodity.csv")
 commodity[['class', 'sort']] = commodity[['class', 'sort']].astype('str')
 comodt_grup = commodity.groupby(['code'])
 print(f'\ncommodity\n\nshape: {commodity.shape}\n\ndtypes:\n{commodity.dtypes}\n\nisnull-columns:\n{commodity.isnull().any()}'
       f'\n\nisnull-rows:\n{sum(commodity.isnull().T.any())}\n\nnumber of commodities:\n{len(comodt_grup)}\n')
-stock = pd.read_csv("D:\Work info\WestUnion\data\origin\dehui\stock.csv")
+stock = pd.read_csv("D:\Work info\WestUnion\data\origin\DH\stock.csv")
 stock['busdate'] = pd.to_datetime(stock['busdate'])
 stock['code'] = stock['code'].astype('str')
 stock_grup = stock.groupby(["organ", "code"])
 print(f'\nstock\n\nshape: {stock.shape}\n\ndtypes:\n{stock.dtypes}\n\nisnull-columns:\n{stock.isnull().any()}'
       f'\n\nisnull-rows:\n{sum(stock.isnull().T.any())}\n\nnumber of commodities:\n{len(stock_grup)}\n')
-running = pd.read_csv("D:\Work info\WestUnion\data\origin\dehui\\running.csv",
+running = pd.read_csv("D:\Work info\WestUnion\data\origin\DH\\running.csv",
                       parse_dates=['selldate'], dtype={'code': str})
 running['selltime'] = running['selltime'].apply(lambda x: x[:8])  # 截取出时分秒
 running['selltime'] = pd.to_datetime(running['selltime'], format='%H:%M:%S')
@@ -67,36 +78,25 @@ running_grup.rename(columns={'selldate': 'busdate', 'amount': 'amount_run', 'sum
 
 # export to sheet
 acct_pred_com_stk_run = pd.merge(acct_pred_com_stk, running_grup, how='left', on=['organ', 'code', 'busdate'])
-chosen = 4
-if chosen == 1:
-    chosen = 'origin'
-elif chosen == 2:
-    chosen = 'drop_fcst_na'
-elif chosen == 3:
-    chosen = 'exact'
-elif chosen == 4:
-    chosen = 'exact_dropna'
-else:
-    chosen = 'exact_dropna_few_colm'
 match chosen:
     case 'origin':
-        acct_pred_com_stk_run.to_csv(f"D:\Work info\WestUnion\data\processed\dehui\\acct_pred_com_stk_run_{chosen}.csv",
+        acct_pred_com_stk_run.to_csv(f"D:\Work info\WestUnion\data\processed\DH\\acct_pred_com_stk_run_{chosen}.csv",
                                      encoding='utf_8_sig', index=False)
     case 'drop_fcst_na':
         acct_pred_com_stk_run.dropna(subset=['fcstamou', 'amount'], inplace=True)
-        acct_pred_com_stk_run.to_csv(f"D:\Work info\WestUnion\data\processed\dehui\\acct_pred_com_stk_run_{chosen}.csv",
+        acct_pred_com_stk_run.to_csv(f"D:\Work info\WestUnion\data\processed\DH\\acct_pred_com_stk_run_{chosen}.csv",
                                      encoding='utf_8_sig', index=False)
     case 'exact':
         acct_pred_com_stk_run = acct_pred_com_stk_run[(acct_pred_com_stk_run['amount_run'] == acct_pred_com_stk_run['amount']) &
             (acct_pred_com_stk_run['sum_price_run'] == acct_pred_com_stk_run['sum_price'])]
-        acct_pred_com_stk_run.to_csv(f"D:\Work info\WestUnion\data\processed\dehui\\acct_pred_com_stk_run_{chosen}.csv",
+        acct_pred_com_stk_run.to_csv(f"D:\Work info\WestUnion\data\processed\DH\\acct_pred_com_stk_run_{chosen}.csv",
                                      encoding='utf_8_sig', index=False)
     case 'exact_dropna':
         acct_pred_com_stk_run = acct_pred_com_stk_run[(acct_pred_com_stk_run['amount_run'] == acct_pred_com_stk_run['amount']) &
                                               (acct_pred_com_stk_run['sum_price_run'] == acct_pred_com_stk_run[
                                                   'sum_price'])]
         acct_pred_com_stk_run.dropna(subset=['fcstamou', 'amount', 'amount_run', 'sum_price_run'], inplace=True)
-        acct_pred_com_stk_run.to_csv(f"D:\Work info\WestUnion\data\processed\dehui\\acct_pred_com_stk_run_{chosen}.csv",
+        acct_pred_com_stk_run.to_csv(f"D:\Work info\WestUnion\data\processed\DH\\acct_pred_com_stk_run_{chosen}.csv",
                                      encoding='utf_8_sig', index=False)
     case _:
         acct_pred_com_stk_run = acct_pred_com_stk_run[(acct_pred_com_stk_run['amount_run'] == acct_pred_com_stk_run['amount']) &
@@ -105,7 +105,7 @@ match chosen:
         acct_pred_com_stk_run.dropna(subset=['fcstamou', 'amount', 'amount_run', 'sum_price_run'], inplace=True)
         acct_pred_com_stk_run.drop(columns=['amount_run', 'sum_price_run', 'sum_disc', 'stock_amou', 'unit', 'spec',
                                             'sum_price', 'sum_cost'], inplace=True)
-        acct_pred_com_stk_run.to_csv(f"D:\Work info\WestUnion\data\processed\dehui\\acct_pred_com_stk_run_{chosen}.csv",
+        acct_pred_com_stk_run.to_csv(f"D:\Work info\WestUnion\data\processed\DH\\acct_pred_com_stk_run_{chosen}.csv",
                                      encoding='utf_8_sig', index=False)
 
 acct_pred_com_stk_run_grup = acct_pred_com_stk_run.groupby(["organ", "code"])
@@ -117,7 +117,7 @@ print(f'\nacct_pred_com_stk_run\n\nshape: {acct_pred_com_stk_run.shape}\n\ndtype
 for _ in range(len(acct_pred_com_stk_run.groupby('organ'))):
     acct_pred_com_stk_run_org = acct_pred_com_stk_run[acct_pred_com_stk_run['organ'] ==
         acct_pred_com_stk_run.groupby('organ', as_index=False).size()['organ'][_]]
-    acct_pred_com_stk_run_org.to_csv(f'D:\Work info\WestUnion\data\processed\dehui\organ\\'
+    acct_pred_com_stk_run_org.to_csv(f'D:\Work info\WestUnion\data\processed\DH\organ\\'
                                      f'{acct_pred_com_stk_run.groupby("organ", as_index=False).size()["organ"][_]}\\'
                                      f'acct_pred_com_stk_run_{chosen}_'
                                      f'{acct_pred_com_stk_run.groupby("organ", as_index=False).size()["organ"][_][-1]}.csv')
