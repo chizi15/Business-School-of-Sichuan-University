@@ -4,7 +4,8 @@ pd.set_option('display.max_columns', None)
 pd.set_option('display.min_rows', 20)
 
 
-chosen = 0
+chosen = 4
+tableau = 0
 if chosen == 1:
     chosen = 'origin'
 elif chosen == 2:
@@ -113,13 +114,15 @@ print(f'\nacct_pred_com_stk_run\n\nshape: {acct_pred_com_stk_run.shape}\n\ndtype
       f'\n\nisnull-columns:\n{acct_pred_com_stk_run.isnull().any()}\n\nisnull-rows:\n'
       f'{sum(acct_pred_com_stk_run.isnull().T.any())}\n\nnumber of commodities:\n{len(acct_pred_com_stk_run_grup)}\n')
 
-# export by organs, to reduce the total rows, to reach the limitation of tableau public
-for _ in range(len(acct_pred_com_stk_run.groupby('organ'))):
-    acct_pred_com_stk_run_org = acct_pred_com_stk_run[acct_pred_com_stk_run['organ'] ==
-        acct_pred_com_stk_run.groupby('organ', as_index=False).size()['organ'][_]]
-    acct_pred_com_stk_run_org.to_csv(f'D:\Work info\WestUnion\data\processed\DH\organ\\'
-                                     f'{acct_pred_com_stk_run.groupby("organ", as_index=False).size()["organ"][_]}\\'
-                                     f'acct_pred_com_stk_run_{chosen}_'
-                                     f'{acct_pred_com_stk_run.groupby("organ", as_index=False).size()["organ"][_][-1]}.csv')
-    if len(acct_pred_com_stk_run_org) != acct_pred_com_stk_run.groupby('organ', as_index=True).size().values[_]:
-        raise Exception('按门店分解df时行数不对')
+if tableau == 1:
+    # export by organs, to reduce the total rows, to reach the limitation of tableau public
+    for _ in range(len(acct_pred_com_stk_run.groupby('organ'))):
+        acct_pred_com_stk_run_org = acct_pred_com_stk_run[acct_pred_com_stk_run['organ'] ==
+            acct_pred_com_stk_run.groupby('organ', as_index=False).size()['organ'][_]]
+        acct_pred_com_stk_run_org.to_csv(f'D:\Work info\WestUnion\data\processed\DH\organ\\'
+                                         f'{acct_pred_com_stk_run.groupby("organ", as_index=False).size()["organ"][_]}\\'
+                                         f'acct_pred_com_stk_run_{chosen}_'
+                                         f'{acct_pred_com_stk_run.groupby("organ", as_index=False).size()["organ"][_][-1]}.csv',
+                                         encoding='utf_8_sig', index=False)
+        if len(acct_pred_com_stk_run_org) != acct_pred_com_stk_run.groupby('organ', as_index=True).size().values[_]:
+            raise Exception('按门店分解df时行数不对')

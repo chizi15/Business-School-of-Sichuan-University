@@ -10,8 +10,9 @@ pd.set_option('display.max_columns', None)
 pd.set_option('display.min_rows', 20)
 
 
+organ = 'HLJ'
 process_type = 1
-truncated = 0
+truncated = 2
 if process_type == 1:
     process_type = 'fundamental sheets process'
     if truncated == 1:
@@ -28,15 +29,15 @@ else:
 match process_type:
     case 'fundamental sheets process':
         cv, n = 1/1, 365/2
-        account = pd.read_csv("D:\Work info\WestUnion\data\origin\\HLJ\\account.csv",
+        account = pd.read_csv(f"D:\Work info\WestUnion\data\origin\\{organ}\\account.csv",
                               parse_dates=['busdate'], infer_datetime_format=True, dtype={'code': str})
         print(f'\naccount\n\nshape: {account.shape}\n\ndtypes:\n{account.dtypes}\n\nisnull-columns:\n{account.isnull().any()}'
               f'\n\nisnull-rows:\n{sum(account.isnull().T.any())}\n')
-        commodity = pd.read_csv("D:\Work info\WestUnion\data\origin\\HLJ\\commodity.csv",
+        commodity = pd.read_csv(f"D:\Work info\WestUnion\data\origin\\{organ}\\commodity.csv",
                                 dtype={'code': str, 'sm_sort': str, 'md_sort': str, 'bg_sort': str})
         print(f'\ncommodity\n\nshape: {commodity.shape}\n\ndtypes:\n{commodity.dtypes}\n\nisnull-columns:\n'
               f'{commodity.isnull().any()}\n\nisnull-rows:\n{sum(commodity.isnull().T.any())}\n')
-        stock = pd.read_csv("D:\Work info\WestUnion\data\origin\\HLJ\\stock.csv",
+        stock = pd.read_csv(f"D:\Work info\WestUnion\data\origin\\{organ}\\stock.csv",
                             parse_dates=['busdate'], infer_datetime_format=True, dtype={'code': str})
         print(f'\nstock\n\nshape: {stock.shape}\n\ndtypes:\n{stock.dtypes}\n\nisnull-columns:\n'
               f'{stock.isnull().any()}\n\nisnull-rows:\n{sum(stock.isnull().T.any())}\n')
@@ -75,7 +76,7 @@ match process_type:
                 acct_comty_stk = acct_comty_stk[(acct_comty_stk['amou_stock'] == 0) & (acct_comty_stk['sum_disc'] == 0) & \
                                                 (~acct_comty_stk['is_holiday'])]
             case _:
-                acct_comty_stk.to_csv('D:\Work info\WestUnion\data\processed\HLJ\merge-sheets-no-truncated-no-screen.csv',
+                acct_comty_stk.to_csv(f'D:\Work info\WestUnion\data\processed\{organ}\merge-sheets-no-truncated-no-screen.csv',
                                       encoding='utf_8_sig', index=False)
                 sys.exit()
 
@@ -97,32 +98,32 @@ match process_type:
                 (np.sum(acct_comty_stk[['organ', 'code']].values == codes_filter_longer[_], axis=1) == 2)]])
         print(f'经变异系数cv且销售天数n筛选后剩余单品的历史销售总天数：{len(account_filter)}')
         account_filter.index.name = 'account_original_index'
-        account_filter.to_csv(f'D:\Work info\WestUnion\data\processed\HLJ\merge-sheets-truncated-{truncated}--'
+        account_filter.to_csv(f'D:\Work info\WestUnion\data\processed\\{organ}\\merge-sheets-truncated-{truncated}--'
                               f'cv-{cv:.2f}--len-{round(n)}.csv', encoding='utf_8_sig')
         print(f'acct_comty_stk truncated finally {account_filter.shape}')
 
     case 'running':
-        running = pd.read_csv("D:\Work info\WestUnion\data\origin\\HLJ\\running.csv",
+        running = pd.read_csv(f"D:\Work info\WestUnion\data\origin\\{organ}\\running.csv",
                               parse_dates=['selldate'], dtype={'code': str})
         running['selltime'] = running['selltime'].apply(lambda x: x[:8])  # 截取出时分秒
         running['selltime'] = pd.to_datetime(running['selltime'], format='%H:%M:%S')
         running['selltime'] = running['selltime'].dt.time  # 去掉to_datetime自动生成的年月日
         print(f'\nrunning\n\nshape: {running.shape}\n\ndtypes:\n{running.dtypes}\n\nisnull-columns:\n'
               f'{running.isnull().any()}\n\nisnull-rows:\n{sum(running.isnull().T.any())}\n')
-        running.to_csv("D:\Work info\WestUnion\data\processed\\HLJ\\running.csv", index=False, encoding='utf_8_sig')
+        running.to_csv(f"D:\Work info\WestUnion\data\processed\\{organ}\\running.csv", index=False, encoding='utf_8_sig')
 
     case 'forecasting and newsvendor comparison':
-        account = pd.read_csv("D:\Work info\WestUnion\data\origin\\HLJ\\account.csv",
+        account = pd.read_csv(f"D:\Work info\WestUnion\data\origin\\{organ}\\account.csv",
                               parse_dates=['busdate'], infer_datetime_format=True, dtype={'code': str})
-        commodity = pd.read_csv("D:\Work info\WestUnion\data\origin\\HLJ\\commodity.csv",
+        commodity = pd.read_csv(f"D:\Work info\WestUnion\data\origin\\{organ}\\commodity.csv",
                                 dtype={'code': str, 'sm_sort': str, 'md_sort': str, 'bg_sort': str})
-        stock = pd.read_csv("D:\Work info\WestUnion\data\origin\\HLJ\\stock.csv",
+        stock = pd.read_csv(f"D:\Work info\WestUnion\data\origin\\{organ}\\stock.csv",
                             parse_dates=['busdate'], infer_datetime_format=True, dtype={'code': str})
         acct_comty = pd.merge(account, commodity, how='left', on=['class', 'code'])
         acct_comty_stk = pd.merge(acct_comty, stock, how='left', on=['organ', 'class', 'code', 'busdate'])
         if sum(acct_comty_stk.isnull().T.any()) > 0:
             acct_comty_stk.drop(index=acct_comty_stk[acct_comty_stk.isnull().T.any()].index, inplace=True)
-        pred = pd.read_csv("D:\Work info\WestUnion\data\origin\\HLJ\\fresh-forecast-order.csv",
+        pred = pd.read_csv(f"D:\Work info\WestUnion\data\origin\\{organ}\\fresh-forecast-order.csv",
                            parse_dates=['busdate'], infer_datetime_format=True,
                            dtype={'bg_sort': str, 'md_sort': str, 'sm_sort': str, 'code': str},
                            names=['Unnamed', 'organ', 'class', 'bg_sort', 'bg_sort_name', 'md_sort', 'md_sort_name',
@@ -144,7 +145,7 @@ match process_type:
         #                 / (pred_acct_comty_stk['predict'] + pred_acct_comty_stk['theory_sale']))
         # pred_acct_comty_stk = pred_acct_comty_stk[smape <= 1/3]
         # 注意，print(f’‘)里{}外不能带:,{}内带:表示设置数值类型
-        pred_acct_comty_stk.to_csv(f'D:\Work info\WestUnion\data\processed\HLJ\process_type-{process_type}-'  
+        pred_acct_comty_stk.to_csv(f'D:\Work info\WestUnion\data\processed\\{organ}\\process_type-{process_type}-'  
                                    f'pred_acct_comty_stk_dropna.csv', index=False, encoding='utf_8_sig')
         group_organ = pred_acct_comty_stk.groupby(['organ'], as_index=False)
         profit_organ = pd.DataFrame(round((group_organ['sum_price'].sum()['sum_price'] - group_organ['sum_cost'].sum()['sum_cost']) /
@@ -179,7 +180,7 @@ match process_type:
                      'sm_sort', 'sm_sort_name', 'code', 'name']]
         profit_all = pd.concat([profit_organ, profit_class, profit_big, profit_mid, profit_small, profit_code],
                                ignore_index=True)
-        profit_all.to_csv(f'D:\Work info\WestUnion\data\processed\HLJ\profit_all.csv', encoding='utf_8_sig')
+        profit_all.to_csv(f'D:\Work info\WestUnion\data\processed\\{organ}\\profit_all.csv', encoding='utf_8_sig')
         # delete the rows whose gross margin is larger than 200%
         profit_all.drop(profit_all[profit_all['GrossMargin(%)'] > 200].index, inplace=True)
         # 'common'(10): cauchy, chi2, expon, exponpow, gamma, lognorm, norm, powerlaw, irayleigh, uniform.
