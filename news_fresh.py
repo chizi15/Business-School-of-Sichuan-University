@@ -1,18 +1,25 @@
 import pandas as pd
 import numpy as np
 import chinese_calendar as calendar
-from fitter import Fitter
+import fitter
 import scipy.stats as st
 import matplotlib.pyplot as plt
+import seaborn as sns
 import datetime
 import sys
+# 添加其他文件夹路径的脚本到系统临时路径，不会保留在环境变量中，每次重新append即可
+sys.path.append("/D:/Work%20info/Repositories/regression_evaluation_main/regression_evaluation_def.py")
+import regression_evaluation_def as ref
 pd.set_option('display.max_columns', None)
 pd.set_option('display.min_rows', 20)
 
 
 organ = 'HLJ'
-process_type = 1
-truncated = 2
+decim = 2
+process_type = 10
+truncated = 10
+code_processed = 10
+
 if process_type == 1:
     process_type = 'fundamental sheets process'
     if truncated == 1:
@@ -25,6 +32,10 @@ elif process_type == 2:
     process_type = 'running'
 else:
     process_type = 'forecasting and newsvendor comparison'
+    if code_processed == 1:
+        code_processed = True
+    else:
+        code_processed = False
 
 match process_type:
     case 'fundamental sheets process':
@@ -108,8 +119,9 @@ match process_type:
         running['selltime'] = running['selltime'].apply(lambda x: x[:8])  # 截取出时分秒
         running['selltime'] = pd.to_datetime(running['selltime'], format='%H:%M:%S')
         running['selltime'] = running['selltime'].dt.time  # 去掉to_datetime自动生成的年月日
-        print(f'\nrunning\n\nshape: {running.shape}\n\ndtypes:\n{running.dtypes}\n\nisnull-columns:\n'
-              f'{running.isnull().any()}\n\nisnull-rows:\n{sum(running.isnull().T.any())}\n')
+        print(f"\n对流水表每笔小票中，单品的平均销售单价进行验证:\n"
+              f"np.average(abs(running['sum_sell'] / running['amount'] - running['price'])): "
+              f"\n{np.average(abs(running['sum_sell'] / running['amount'] - running['price']))}\n")
         running.to_csv(f"D:\Work info\WestUnion\data\processed\\{organ}\\running.csv", index=False, encoding='utf_8_sig')
 
     case 'forecasting and newsvendor comparison':
@@ -121,6 +133,13 @@ match process_type:
                             parse_dates=['busdate'], infer_datetime_format=True, dtype={'code': str})
         acct_comty = pd.merge(account, commodity, how='left', on=['class', 'code'])
         acct_comty_stk = pd.merge(acct_comty, stock, how='left', on=['organ', 'class', 'code', 'busdate'])
+        print(f"\n三种平均成本单价（即平均进价）对比：\n"
+              f"\n由账表得到的成本单价(account['sum_cost'] / account['amount']):\n"
+              f"{round(acct_comty_stk['sum_cost'] / acct_comty_stk['amount'], decim)}\n"
+              f"\n由库存得到的成本单价(stock['sum_stock'] / stock['amou_stock']):\n"
+              f"{round(acct_comty_stk['sum_stock'] / acct_comty_stk['amou_stock'], decim)}\n"
+              f"\nstock['costprice']:\n"
+              f"{acct_comty_stk['costprice']}\n")
         if sum(acct_comty_stk.isnull().T.any()) > 0:
             acct_comty_stk.drop(index=acct_comty_stk[acct_comty_stk.isnull().T.any()].index, inplace=True)
         pred = pd.read_csv(f"D:\Work info\WestUnion\data\origin\\{organ}\\fresh-forecast-order.csv",
@@ -129,107 +148,377 @@ match process_type:
                            names=['Unnamed', 'organ', 'class', 'bg_sort', 'bg_sort_name', 'md_sort', 'md_sort_name',
                                   'sm_sort', 'sm_sort_name', 'code', 'name', 'busdate', 'theory_sale', 'real_sale',
                                   'predict', 'advise_order', 'real_order'], header=0)
-        print(f'\npred\n\nshape: {pred.shape}\n\ndtypes:\n{pred.dtypes}\n\nisnull-columns:\n'
-              f'{pred.isnull().any()}\n\nisnull-rows:\n{sum(pred.isnull().T.any())}\n')
+        print(f'\npred:\n\nshape: {pred.shape}\n\ndtypes:\n{pred.dtypes}\n\nisnull-columns:\n'
+              f'{pred.isnull().sum()}\n\nisnull-rows-ratio-avg(%):'
+              f'\n{round(sum(pred.isnull().sum()) / (len(pred) * max(1, sum(pred.isnull().any()))) * 100, decim)}\n')
         pred.drop(columns=['Unnamed'], inplace=True)
         pred_acct_comty_stk = pd.merge(pred, acct_comty_stk, how='inner',
                                        on=['organ', 'code', 'name', 'busdate', 'class', 'bg_sort', 'bg_sort_name',
                                            'md_sort', 'md_sort_name', 'sm_sort', 'sm_sort_name'])
-        print(f'\npred_acct_comty_stk\n\nshape: {pred_acct_comty_stk.shape}\n\ndtypes:\n{pred_acct_comty_stk.dtypes}'
-              f'\n\nisnull-columns:\n{pred_acct_comty_stk.isnull().any()}'
-              f'\n\nisnull-rows:\n{sum(pred_acct_comty_stk.isnull().T.any())}\n')
+        print(f'\npred_acct_comty_stk:\n\nshape: {pred_acct_comty_stk.shape}\n\ndtypes:\n{pred_acct_comty_stk.dtypes}\n\nisnull-columns:\n'
+              f'{pred_acct_comty_stk.isnull().sum()}\n\nisnull-rows-ratio-avg(%):'
+              f'\n{round(sum(pred_acct_comty_stk.isnull().sum()) / (len(pred_acct_comty_stk) * max(1, sum(pred_acct_comty_stk.isnull().any()))) * 100, decim)}\n')
+
         # 将predict列中含有空值的行删除，保证所有行同时有销售值和预测值
         pred_acct_comty_stk.dropna(inplace=True, subset=['predict'])
-        # pred_acct_comty_stk = pred_acct_comty_stk[pred_acct_comty_stk['busdate'] >= datetime.datetime(2022, 3, 1)]
+        # forecast is not started among 2022 spring festival
+        pred_acct_comty_stk = pred_acct_comty_stk[pred_acct_comty_stk['busdate'] >= datetime.datetime(2022, 3, 1)]
         # smape = 2 * abs((pred_acct_comty_stk['predict'] - pred_acct_comty_stk['theory_sale'])
         #                 / (pred_acct_comty_stk['predict'] + pred_acct_comty_stk['theory_sale']))
-        # pred_acct_comty_stk = pred_acct_comty_stk[smape <= 1/3]
+        # pred_acct_comty_stk = pred_acct_comty_stk[smape < 2]
         # 注意，print(f’‘)里{}外不能带:,{}内带:表示设置数值类型
         pred_acct_comty_stk.to_csv(f'D:\Work info\WestUnion\data\processed\\{organ}\\process_type-{process_type}-'  
                                    f'pred_acct_comty_stk_dropna.csv', index=False, encoding='utf_8_sig')
+
+        # profit = (售价 - 进价) / 进价
         group_organ = pred_acct_comty_stk.groupby(['organ'], as_index=False)
         profit_organ = pd.DataFrame(round((group_organ['sum_price'].sum()['sum_price'] - group_organ['sum_cost'].sum()['sum_cost']) /
-                                    group_organ['sum_cost'].sum()['sum_cost'] * 100, 2), columns=['GrossMargin(%)'])
+                                    group_organ['sum_cost'].sum()['sum_cost'] * 100, decim), columns=['GrossMargin(%)'])
         profit_organ['organ'] = group_organ['sum_price'].sum()['organ']
         group_class = pred_acct_comty_stk.groupby(['organ', 'class'], as_index=False)
         profit_class = pd.DataFrame(round((group_class['sum_price'].sum()['sum_price'] - group_class['sum_cost'].sum()['sum_cost']) /
-                                    group_class['sum_cost'].sum()['sum_cost'] * 100, 2), columns=['GrossMargin(%)'])
+                                    group_class['sum_cost'].sum()['sum_cost'] * 100, decim), columns=['GrossMargin(%)'])
         profit_class[['organ', 'class']] = group_class['sum_price'].sum()[['organ', 'class']]
         group_big = pred_acct_comty_stk.groupby(['organ', 'class', 'bg_sort', 'bg_sort_name'], as_index=False)
         profit_big = pd.DataFrame(round((group_big['sum_price'].sum()['sum_price'] - group_big['sum_cost'].sum()['sum_cost']) /
-                                  group_big['sum_cost'].sum()['sum_cost'] * 100, 2), columns=['GrossMargin(%)'])
+                                  group_big['sum_cost'].sum()['sum_cost'] * 100, decim), columns=['GrossMargin(%)'])
         profit_big[['organ', 'class', 'bg_sort', 'bg_sort_name']] = group_big['sum_price'].sum()[['organ', 'class', 'bg_sort', 'bg_sort_name']]
         group_mid = pred_acct_comty_stk.groupby(['organ', 'class', 'bg_sort', 'bg_sort_name', 'md_sort', 'md_sort_name'], as_index=False)
         profit_mid = pd.DataFrame(round((group_mid['sum_price'].sum()['sum_price'] - group_mid['sum_cost'].sum()['sum_cost']) /
-                                  group_mid['sum_cost'].sum()['sum_cost'] * 100, 2), columns=['GrossMargin(%)'])
+                                  group_mid['sum_cost'].sum()['sum_cost'] * 100, decim), columns=['GrossMargin(%)'])
         profit_mid[['organ', 'class', 'bg_sort', 'bg_sort_name', 'md_sort', 'md_sort_name']] = \
             group_mid['sum_price'].sum()[['organ', 'class', 'bg_sort', 'bg_sort_name', 'md_sort', 'md_sort_name']]
         group_small = pred_acct_comty_stk.groupby(['organ', 'class', 'bg_sort', 'bg_sort_name', 'md_sort',
                                                    'md_sort_name', 'sm_sort', 'sm_sort_name'], as_index=False)
         profit_small = pd.DataFrame(round((group_small['sum_price'].sum()['sum_price'] - group_small['sum_cost'].sum()['sum_cost']) /
-                                    group_small['sum_cost'].sum()['sum_cost'] * 100, 2), columns=['GrossMargin(%)'])
+                                    group_small['sum_cost'].sum()['sum_cost'] * 100, decim), columns=['GrossMargin(%)'])
         profit_small[['organ', 'class', 'bg_sort', 'bg_sort_name', 'md_sort', 'md_sort_name',
                       'sm_sort', 'sm_sort_name']] = group_small['sum_price'].sum()[['organ', 'class', 'bg_sort', 'bg_sort_name', 'md_sort', 'md_sort_name',
                       'sm_sort', 'sm_sort_name']]
         group_code = pred_acct_comty_stk.groupby(['organ', 'class', 'bg_sort', 'bg_sort_name', 'md_sort', 'md_sort_name',
                                                   'sm_sort', 'sm_sort_name', 'code', 'name'], as_index=False)
         profit_code = pd.DataFrame(round((group_code['sum_price'].sum()['sum_price'] - group_code['sum_cost'].sum()['sum_cost']) /
-                                   group_code['sum_cost'].sum()['sum_cost'] * 100, 2), columns=['GrossMargin(%)'])
+                                   group_code['sum_cost'].sum()['sum_cost'] * 100, decim), columns=['GrossMargin(%)'])
         profit_code[['organ', 'class', 'bg_sort', 'bg_sort_name', 'md_sort', 'md_sort_name',
                      'sm_sort', 'sm_sort_name', 'code', 'name']] = group_code['sum_price'].sum()[['organ', 'class', 'bg_sort', 'bg_sort_name', 'md_sort', 'md_sort_name',
                      'sm_sort', 'sm_sort_name', 'code', 'name']]
-        profit_all = pd.concat([profit_organ, profit_class, profit_big, profit_mid, profit_small, profit_code],
+        profit_ori = pd.concat([profit_organ, profit_class, profit_big, profit_mid, profit_small, profit_code],
                                ignore_index=True)
-        profit_all.to_csv(f'D:\Work info\WestUnion\data\processed\\{organ}\\profit_all.csv', encoding='utf_8_sig')
-        # delete the rows whose gross margin is larger than 200%
-        profit_all.drop(profit_all[profit_all['GrossMargin(%)'] > 200].index, inplace=True)
-        # 'common'(10): cauchy, chi2, expon, exponpow, gamma, lognorm, norm, powerlaw, irayleigh, uniform.
-        f = Fitter(profit_all['GrossMargin(%)'], distributions='common')
-        f.fit()
-        print(f.summary())
-        name = list(f.get_best().keys())[0]
-        print('\n'f'best distribution: {name}''\n')
-        f.plot_pdf()
-        plt.show()
-        plt.plot(f.x, f.fitted_pdf[name])
-        plt.show()
+        profit_ori.to_csv(f'D:\Work info\WestUnion\data\processed\\{organ}\\profit_ori.csv', encoding='utf_8_sig')
+        # 说明：因为后面不是用profit_ori作为自变量来算newsvendor的最优解，而是用分位点ppfx作为自变量利润，
+        # 所以是否对profit_ori做筛选不影响后续newsvendor的最优解的计算。
 
+        # ppfx = (售价 - 进价) / 售价
         ppfx_organ = pd.DataFrame(round((group_organ['sum_price'].sum()['sum_price'] - group_organ['sum_cost'].sum()['sum_cost']) /
-                                        group_organ['sum_price'].sum()['sum_price'], 4), columns=['ppfx'])
+                                        group_organ['sum_price'].sum()['sum_price'], decim), columns=['ppfx'])
         ppfx_class = pd.DataFrame(round((group_class['sum_price'].sum()['sum_price'] - group_class['sum_cost'].sum()['sum_cost']) /
-                                        group_class['sum_price'].sum()['sum_price'], 4), columns=['ppfx'])
+                                        group_class['sum_price'].sum()['sum_price'], decim), columns=['ppfx'])
         ppfx_big = pd.DataFrame(round((group_big['sum_price'].sum()['sum_price'] - group_big['sum_cost'].sum()['sum_cost']) /
-                                      group_big['sum_price'].sum()['sum_price'], 4), columns=['ppfx'])
+                                      group_big['sum_price'].sum()['sum_price'], decim), columns=['ppfx'])
         ppfx_mid = pd.DataFrame(round((group_mid['sum_price'].sum()['sum_price'] - group_mid['sum_cost'].sum()['sum_cost']) /
-                                      group_mid['sum_price'].sum()['sum_price'], 4), columns=['ppfx'])
+                                      group_mid['sum_price'].sum()['sum_price'], decim), columns=['ppfx'])
         ppfx_small = pd.DataFrame(round((group_small['sum_price'].sum()['sum_price'] - group_small['sum_cost'].sum()['sum_cost']) /
-                                        group_small['sum_price'].sum()['sum_price'], 4), columns=['ppfx'])
+                                        group_small['sum_price'].sum()['sum_price'], decim), columns=['ppfx'])
         ppfx_code = pd.DataFrame(round((group_code['sum_price'].sum()['sum_price'] - group_code['sum_cost'].sum()['sum_cost']) /
-                                       group_code['sum_price'].sum()['sum_price'], 4), columns=['ppfx'])
-        ppfx = pd.concat([ppfx_organ, ppfx_class, ppfx_big, ppfx_mid, ppfx_small, ppfx_code], ignore_index=True)
-        ppfx_all = pd.concat([ppfx, profit_all], axis=1)
-        f = Fitter(ppfx_all['ppfx'], distributions='common')
-        f.fit()
-        print(f.summary())
-        name = list(f.get_best().keys())[0]
-        print('\n'f'best distribution: {name}''\n')
-        f.plot_pdf()
-        plt.show()
+                                       group_code['sum_price'].sum()['sum_price'], decim), columns=['ppfx'])
+        ppfx_ori = pd.concat([ppfx_organ, ppfx_class, ppfx_big, ppfx_mid, ppfx_small, ppfx_code], ignore_index=True)
+        ppfx_all = pd.concat([ppfx_ori, profit_ori], axis=1)
+        # 特别重要：因为此处的ppfx_all中每一行的顺序，要与后面（org_sale，org_pred按organ做groupby后），
+        # 再按行append（org_cls_sale，org_cls_pred按organ，class做groupby后），
+        # 再按行append（org_cls_bg_sale，org_cls_bg_pred按organ，class, bg_sort做groupby后）,
+        # 再按行append（org_cls_bg_md_sale，org_cls_bg_md_pred按organ，class, bg_sort, md_sort做groupby后）,
+        # 再按行append（org_cls_bg_md_sm_sale，org_cls_bg_md_sm_pred按organ，class, bg_sort, md_sort, sm_sort做groupby后）,
+        # 再按行append（org_cls_bg_md_sm_cd_sale，org_cls_bg_md_sm_cd_pred按organ，class, bg_sort, md_sort, sm_sort, code做groupby后）,
+        # 的顺序完全一致，一一匹配，最后得到的df中，alpha才是与ppfx和GrossMargin(%)一一对应的。
+        # 如果在此处先按条件筛选ppfx_all，则最后得到的df里，中间有些行会对错，则后面的行会全部匹配错。因为这里删除了ppfx_all的某些行，
+        # 而对alpha做append时是没有删除行的。所以只能在最后的df里将ppfx <= 0和ppfx == 1的异常行删除，其他行里面的alpha、ppfx、GrossMargin(%)等字段才不会对应错。
 
-        alpha = list()
-        group_organ_date = pred_acct_comty_stk.groupby(['organ', 'busdate'], as_index=False)
-        organ_sale_all = group_organ_date['theory_sale'].sum()
-        organ_pred_all = group_organ_date['predict'].sum()
-        for _ in range(len(organ_sale_all.groupby('organ').groups.keys())):
-            organ_sale = organ_sale_all[organ_sale_all['organ'] == list(organ_sale_all.groupby('organ').groups.keys())[_]]['theory_sale']
-            f = Fitter(organ_sale, distributions='gamma')
+        # obtain six hierarchy's sum of 'theory_sale' and 'predict'
+        grp_org_dt = pred_acct_comty_stk.groupby(['organ', 'busdate'], as_index=False)
+        org_sale = grp_org_dt['theory_sale'].sum()
+        org_pred = grp_org_dt['predict'].sum()
+        print(f"\nconcerning case ppfx, the number of group organ is: {len(ppfx_organ)}\n"
+              f"the length of organ_busdate is: {len(org_sale)}\n")
+        grp_org_cls_dt = pred_acct_comty_stk.groupby(['organ', 'class', 'busdate'], as_index=False)
+        org_cls_sale = grp_org_cls_dt['theory_sale'].sum()
+        org_cls_pred = grp_org_cls_dt['predict'].sum()
+        print(f"concerning case ppfx, the number of group organ_cls is: {len(ppfx_class)}\n"
+              f"the length of organ_class_busdate is: {len(org_cls_sale)}\n")
+        grp_org_cls_bg_dt = pred_acct_comty_stk.groupby(['organ', 'class', 'bg_sort', 'busdate'], as_index=False)
+        org_cls_bg_sale = grp_org_cls_bg_dt['theory_sale'].sum()
+        org_cls_bg_pred = grp_org_cls_bg_dt['predict'].sum()
+        print(f"concerning case ppfx, the number of group organ_cls_bg is: {len(ppfx_big)}\n"
+              f"the length of organ_class_bg_busdate is: {len(org_cls_bg_sale)}\n")
+        grp_org_cls_bg_md_dt = pred_acct_comty_stk.groupby(['organ', 'class', 'bg_sort', 'md_sort', 'busdate'],
+                                                           as_index=False)
+        org_cls_bg_md_sale = grp_org_cls_bg_md_dt['theory_sale'].sum()
+        org_cls_bg_md_pred = grp_org_cls_bg_md_dt['predict'].sum()
+        print(f"concerning case ppfx, the number of group organ_cls_bg_md is: {len(ppfx_mid)}\n"
+              f"the length of organ_class_bg_md_busdate is: {len(org_cls_bg_md_sale)}\n")
+        grp_org_cls_bg_md_sm_dt = pred_acct_comty_stk.groupby(['organ', 'class', 'bg_sort', 'md_sort', 'sm_sort',
+                                                               'busdate'], as_index=False)
+        org_cls_bg_md_sm_sale = grp_org_cls_bg_md_sm_dt['theory_sale'].sum()
+        org_cls_bg_md_sm_pred = grp_org_cls_bg_md_sm_dt['predict'].sum()
+        print(f"concerning case ppfx, the number of group organ_cls_bg_md_sm is: {len(ppfx_small)}\n"
+              f"the length of organ_class_bg_md_sm_busdate is: {len(org_cls_bg_md_sm_sale)}\n")
+        grp_org_cls_bg_md_sm_cd_dt = pred_acct_comty_stk.groupby(['organ', 'class', 'bg_sort', 'md_sort', 'sm_sort',
+                                                                  'code', 'busdate'], as_index=False)
+        org_cls_bg_md_sm_cd_sale = grp_org_cls_bg_md_sm_cd_dt['theory_sale'].sum()
+        org_cls_bg_md_sm_cd_pred = grp_org_cls_bg_md_sm_cd_dt['predict'].sum()
+        print(f"concerning case ppfx, the number of group organ_cls_bg_md_sm_cd is: {len(ppfx_code)}\n"
+              f"the length of organ_class_bg_md_sm_cd_busdate is: {len(org_cls_bg_md_sm_cd_sale)}\n")
+
+        eval_metr = pd.DataFrame()
+        for _ in range(len(org_sale.groupby('organ').groups.keys())):
+            org_sale_each = org_sale[org_sale['organ'] == list(org_sale.groupby('organ').groups.keys())[_]]['theory_sale']
+            try:
+                # obtain the ralative accuracy (alpha) of 'organ'
+                f = fitter.Fitter(org_sale_each, distributions='gamma')
+                f.fit()
+                org_news_each = st.gamma.ppf(ppfx_all['ppfx'][_], *f.fitted_param['gamma'])
+                org_pred_each = org_pred[org_pred['organ'] == list(org_pred.groupby('organ').groups.keys())[_]]['predict']
+                alpha = np.median((org_pred_each - org_news_each) / (org_sale_each - org_news_each))
+                # calculate evaluation metrics between predict and theory_sale
+                res = ref.regression_evaluation_single(y_true=org_sale_each, y_pred=org_pred_each)
+                accu_sin = ref.accuracy_single(y_true=org_sale_each, y_pred=org_pred_each)
+                df = round(pd.DataFrame(list([alpha]) + list([accu_sin]) + list(res[:-2])).T, decim)
+                eval_metr = eval_metr.append(df)
+            except:
+                print(f"\nin loop {_}, the length of 'org_sale_each' is {len(org_sale_each)}\n")
+                df = pd.DataFrame(list([np.nan]) * max(len(eval_metr.columns), 21)).T
+                eval_metr = eval_metr.append(df)
+        print(f"\nppfx(i.e. gross margin ratio):"
+              f"\n{ppfx_all['ppfx'].loc[:len(org_sale.groupby('organ').groups.keys())-1]}\n"
+              f"\neval_metr:\n{eval_metr}")
+
+        for _ in range(len(org_cls_sale.groupby(['organ', 'class']).groups.keys())):
+            org_cls_sale_each = org_cls_sale[(org_cls_sale[['organ', 'class']] ==
+                list(org_cls_sale.groupby(['organ', 'class']).groups.keys())[_]).sum(axis=1) ==
+                len(['organ', 'class'])]['theory_sale']
+            try:
+                # obtain the ralative accuracy (alpha) of ['organ', 'class']
+                f = fitter.Fitter(org_cls_sale_each, distributions='gamma')
+                f.fit()
+                org_cls_news_each = st.gamma.ppf(ppfx_all['ppfx'][len(org_sale.groupby('organ').groups.keys()) + _], *f.fitted_param['gamma'])
+                org_cls_pred_each = org_cls_pred[(org_cls_pred[['organ', 'class']] ==
+                    list(org_cls_pred.groupby(['organ', 'class']).groups.keys())[_]).sum(axis=1) ==
+                    len(['organ', 'class'])]['predict']
+                alpha = np.median((org_cls_pred_each - org_cls_news_each) / (org_cls_sale_each - org_cls_news_each))
+                # calculate evaluation metrics between predict and theory_sale
+                res = ref.regression_evaluation_single(y_true=org_cls_sale_each, y_pred=org_cls_pred_each)
+                accu_sin = ref.accuracy_single(y_true=org_cls_sale_each, y_pred=org_cls_pred_each)
+                df = round(pd.DataFrame(list([alpha]) + list([accu_sin]) + list(res[:-2])).T, decim)
+                eval_metr = eval_metr.append(df)
+            except:
+                print(f"\nin loop {_}, the length of 'org_cls_sale_each' is {len(org_cls_sale_each)}\n")
+                df = pd.DataFrame(list([np.nan]) * max(len(eval_metr.columns), 21)).T
+                eval_metr = eval_metr.append(df)
+        print(f"\nppfx(i.e. gross margin ratio):"
+              f"\n{ppfx_all['ppfx'].loc[:len(org_cls_sale.groupby(['organ', 'class']).groups.keys()) - 1]}\n"
+              f"\neval_metr:\n{eval_metr}")
+
+        for _ in range(len(org_cls_bg_sale.groupby(['organ', 'class', 'bg_sort']).groups.keys())):
+            org_cls_bg_sale_each = org_cls_bg_sale[(org_cls_bg_sale[['organ', 'class', 'bg_sort']] ==
+                list(org_cls_bg_sale.groupby(['organ', 'class', 'bg_sort']).groups.keys())[_]).sum(axis=1) ==
+                len(['organ', 'class', 'bg_sort'])]['theory_sale']
+            try:
+                # obtain the ralative accuracy of ['organ', 'class', 'bg_sort']
+                f = fitter.Fitter(org_cls_bg_sale_each, distributions='gamma')
+                f.fit()
+                org_cls_bg_news_each = st.gamma.ppf(ppfx_all['ppfx'][len(org_sale.groupby('organ').groups.keys()) +
+                                                                     len(org_cls_sale.groupby(['organ', 'class']).groups.keys()) + _],
+                                                    *f.fitted_param['gamma'])
+                org_cls_bg_pred_each = org_cls_bg_pred[(org_cls_bg_pred[['organ', 'class', 'bg_sort']] ==
+                    list(org_cls_bg_pred.groupby(['organ', 'class', 'bg_sort']).groups.keys())[_]).sum(axis=1) ==
+                    len(['organ', 'class', 'bg_sort'])]['predict']
+                alpha = np.median((org_cls_bg_pred_each - org_cls_bg_news_each) / (org_cls_bg_sale_each - org_cls_bg_news_each))
+                # calculate evaluation metrics between predict and theory_sale
+                res = ref.regression_evaluation_single(y_true=org_cls_bg_sale_each, y_pred=org_cls_bg_pred_each)
+                accu_sin = ref.accuracy_single(y_true=org_cls_bg_sale_each, y_pred=org_cls_bg_pred_each)
+                df = round(pd.DataFrame(list([alpha]) + list([accu_sin]) + list(res[:-2])).T, decim)
+                eval_metr = eval_metr.append(df)
+            except:
+                print(f"\nin loop {_}, the length of 'org_cls_bg_sale_each' is {len(org_cls_bg_sale_each)}\n")
+                df = pd.DataFrame(list([np.nan]) * max(len(eval_metr.columns), 21)).T
+                eval_metr = eval_metr.append(df)
+        print(f"\nppfx(i.e. gross margin ratio):"
+              f"\n{ppfx_all['ppfx'].loc[:len(org_cls_bg_sale.groupby(['organ', 'class', 'bg_sort']).groups.keys()) - 1]}\n"
+              f"\neval_metr:\n{eval_metr}")
+
+        for _ in range(len(org_cls_bg_md_sale.groupby(['organ', 'class', 'bg_sort', 'md_sort']).groups.keys())):
+            org_cls_bg_md_sale_each = org_cls_bg_md_sale[(org_cls_bg_md_sale[['organ', 'class', 'bg_sort', 'md_sort']] ==
+                list(org_cls_bg_md_sale.groupby(['organ', 'class', 'bg_sort', 'md_sort']).groups.keys())[_]).sum(axis=1) ==
+                len(['organ', 'class', 'bg_sort', 'md_sort'])]['theory_sale']
+            try:
+                # obtain the ralative accuracy of ['organ', 'class', 'bg_sort', 'md_sort']
+                f = fitter.Fitter(org_cls_bg_md_sale_each, distributions='gamma')
+                f.fit()
+                org_cls_bg_md_news_each = st.gamma.ppf(ppfx_all['ppfx'][len(org_sale.groupby('organ').groups.keys()) +
+                                                                        len(org_cls_sale.groupby(['organ', 'class']).groups.keys()) +
+                                                                        len(org_cls_bg_sale.groupby(['organ', 'class', 'bg_sort']).groups.keys()) + _],
+                                                       *f.fitted_param['gamma'])
+                org_cls_bg_md_pred_each = org_cls_bg_md_pred[(org_cls_bg_md_pred[['organ', 'class', 'bg_sort', 'md_sort']] ==
+                    list(org_cls_bg_md_pred.groupby(['organ', 'class', 'bg_sort', 'md_sort']).groups.keys())[_]).sum(axis=1) ==
+                    len(['organ', 'class', 'bg_sort', 'md_sort'])]['predict']
+                alpha = np.median(
+                    (org_cls_bg_md_pred_each - org_cls_bg_md_news_each) / (org_cls_bg_md_sale_each - org_cls_bg_md_news_each))
+                # calculate evaluation metrics between predict and theory_sale
+                res = ref.regression_evaluation_single(y_true=org_cls_bg_md_sale_each, y_pred=org_cls_bg_md_pred_each)
+                accu_sin = ref.accuracy_single(y_true=org_cls_bg_md_sale_each, y_pred=org_cls_bg_md_pred_each)
+                df = round(pd.DataFrame(list([alpha]) + list([accu_sin]) + list(res[:-2])).T, decim)
+                eval_metr = eval_metr.append(df)
+            except:
+                print(f"\nin loop {_}, the length of 'org_cls_bg_md_sale_each' is {len(org_cls_bg_md_sale_each)}\n")
+                df = pd.DataFrame(list([np.nan]) * max(len(eval_metr.columns), 21)).T
+                eval_metr = eval_metr.append(df)
+        print(f"\nppfx(i.e. gross margin ratio):"
+              f"\n{ppfx_all['ppfx'].loc[:len(org_cls_bg_md_sale.groupby(['organ', 'class', 'bg_sort', 'md_sort']).groups.keys()) - 1]}\n"
+              f"\neval_metr:\n{eval_metr}")
+
+        for _ in range(len(org_cls_bg_md_sm_sale.groupby(['organ', 'class', 'bg_sort', 'md_sort', 'sm_sort']).groups.keys())):
+            org_cls_bg_md_sm_sale_each = org_cls_bg_md_sm_sale[(org_cls_bg_md_sm_sale[['organ', 'class', 'bg_sort', 'md_sort', 'sm_sort']] ==
+                list(org_cls_bg_md_sm_sale.groupby(['organ', 'class', 'bg_sort', 'md_sort', 'sm_sort']).groups.keys())[_]).sum(axis=1) ==
+                len(['organ', 'class', 'bg_sort', 'md_sort', 'sm_sort'])]['theory_sale']
+            try:
+                # obtain the ralative accuracy of ['organ', 'class', 'bg_sort', 'md_sort', 'sm_sort']
+                f = fitter.Fitter(org_cls_bg_md_sm_sale_each, distributions='gamma')
+                f.fit()
+                org_cls_bg_md_sm_news_each = st.gamma.ppf(ppfx_all['ppfx'][len(org_sale.groupby('organ').groups.keys()) +
+                                                                           len(org_cls_sale.groupby(['organ', 'class']).groups.keys()) +
+                                                                           len(org_cls_bg_sale.groupby(['organ', 'class', 'bg_sort']).groups.keys()) +
+                                                                           len(org_cls_bg_md_sale.groupby(['organ', 'class', 'bg_sort', 'md_sort']).groups.keys()) + _],
+                                                          *f.fitted_param['gamma'])
+                org_cls_bg_md_sm_pred_each = org_cls_bg_md_sm_pred[(org_cls_bg_md_sm_pred[['organ', 'class', 'bg_sort', 'md_sort', 'sm_sort']] ==
+                    list(org_cls_bg_md_sm_pred.groupby(['organ', 'class', 'bg_sort', 'md_sort', 'sm_sort']).groups.keys())[_]).sum(axis=1) ==
+                    len(['organ', 'class', 'bg_sort', 'md_sort', 'sm_sort'])]['predict']
+                alpha = np.median(
+                    (org_cls_bg_md_sm_pred_each - org_cls_bg_md_sm_news_each) / (
+                                org_cls_bg_md_sm_sale_each - org_cls_bg_md_sm_news_each))
+                # calculate evaluation metrics between predict and theory_sale
+                res = ref.regression_evaluation_single(y_true=org_cls_bg_md_sm_sale_each, y_pred=org_cls_bg_md_sm_pred_each)
+                accu_sin = ref.accuracy_single(y_true=org_cls_bg_md_sm_sale_each, y_pred=org_cls_bg_md_sm_pred_each)
+                df = round(pd.DataFrame(list([alpha]) + list([accu_sin]) + list(res[:-2])).T, decim)
+                eval_metr = eval_metr.append(df)
+            except:
+                print(f"\nin loop {_}, the length of 'org_cls_bg_md_sm_sale_each' is {len(org_cls_bg_md_sm_sale_each)}\n")
+                df = pd.DataFrame(list([np.nan]) * max(len(eval_metr.columns), 21)).T
+                eval_metr = eval_metr.append(df)
+        print(f"\nppfx(i.e. gross margin ratio):"
+              f"\n{ppfx_all['ppfx'].loc[:len(org_cls_bg_md_sm_sale.groupby(['organ', 'class', 'bg_sort', 'md_sort', 'sm_sort']).groups.keys()) - 1]}\n"
+              f"\neval_metr:\n{eval_metr}")
+
+        if code_processed is True:
+            for _ in range(len(org_cls_bg_md_sm_cd_sale.groupby(['organ', 'class', 'bg_sort', 'md_sort', 'sm_sort', 'code']).groups.keys())):
+                org_cls_bg_md_sm_cd_sale_each = org_cls_bg_md_sm_cd_sale[(org_cls_bg_md_sm_cd_sale[['organ', 'class', 'bg_sort', 'md_sort', 'sm_sort', 'code']] ==
+                    list(org_cls_bg_md_sm_cd_sale.groupby(['organ', 'class', 'bg_sort', 'md_sort', 'sm_sort', 'code']).groups.keys())[_]).sum(axis=1) ==
+                    len(['organ', 'class', 'bg_sort', 'md_sort', 'sm_sort', 'code'])]['theory_sale']
+                try:
+                    # obtain the ralative accuracy of ['organ', 'class', 'bg_sort', 'md_sort', 'sm_sort', , 'code']
+                    f = fitter.Fitter(org_cls_bg_md_sm_cd_sale_each, distributions='gamma', timeout=10)
+                    f.fit()
+                    org_cls_bg_md_sm_cd_news_each = st.gamma.ppf(ppfx_all['ppfx'][len(org_sale.groupby('organ').groups.keys()) +
+                                                                                  len(org_cls_sale.groupby(['organ', 'class']).groups.keys()) +
+                                                                                  len(org_cls_bg_sale.groupby(['organ', 'class', 'bg_sort']).groups.keys()) +
+                                                                                  len(org_cls_bg_md_sale.groupby(['organ', 'class', 'bg_sort', 'md_sort']).groups.keys()) +
+                                                                                  len(org_cls_bg_md_sm_sale.groupby(['organ', 'class', 'bg_sort', 'md_sort', 'sm_sort']).groups.keys()) + _],
+                                                                 *f.fitted_param['gamma'])
+                    org_cls_bg_md_sm_cd_pred_each = org_cls_bg_md_sm_cd_pred[(org_cls_bg_md_sm_cd_pred[['organ', 'class', 'bg_sort', 'md_sort', 'sm_sort', 'code']] ==
+                        list(org_cls_bg_md_sm_cd_pred.groupby(['organ', 'class', 'bg_sort', 'md_sort', 'sm_sort', 'code']).groups.keys())[_]).sum(axis=1) ==
+                        len(['organ', 'class', 'bg_sort', 'md_sort', 'sm_sort', 'code'])]['predict']
+                    alpha = np.median(
+                        (org_cls_bg_md_sm_cd_pred_each - org_cls_bg_md_sm_cd_news_each) / (
+                                org_cls_bg_md_sm_cd_sale_each - org_cls_bg_md_sm_cd_news_each))
+                    # calculate evaluation metrics between predict and theory_sale
+                    res = ref.regression_evaluation_single(y_true=org_cls_bg_md_sm_cd_sale_each,
+                                                           y_pred=org_cls_bg_md_sm_cd_pred_each)
+                    accu_sin = ref.accuracy_single(y_true=org_cls_bg_md_sm_cd_sale_each, y_pred=org_cls_bg_md_sm_cd_pred_each)
+                    df = round(pd.DataFrame(list([alpha]) + list([accu_sin]) + list(res[:-2])).T, decim)
+                    eval_metr = eval_metr.append(df)
+                except:
+                    print(
+                        f"\nin loop {_}, the length of 'org_cls_bg_md_sm_cd_sale_each' is {len(org_cls_bg_md_sm_cd_sale_each)}\n")
+                    df = pd.DataFrame(list([np.nan]) * max(len(eval_metr.columns), 21)).T
+                    eval_metr = eval_metr.append(df)
+        print(f"\nppfx(i.e. gross margin ratio):"
+              f"\n{ppfx_all['ppfx'].loc[:len(org_cls_bg_md_sm_cd_sale.groupby(['organ', 'class', 'bg_sort', 'md_sort', 'sm_sort', 'code']).groups.keys()) - 1]}\n"
+              f"\neval_metr:\n{eval_metr}")
+        if len(eval_metr) != len(ppfx_all):
+            raise Exception("alpha中元素的顺序与ppfx_all中行的顺序不匹配，即alpha与ppfx,GrossMargin(%)的对应关系错误，结果不可用")
+
+        # 注意 df.columns=[] 与 df.reindex 的区别，前者是重新赋列名，后者是改变列的顺序。
+        eval_metr.columns = ['alpha', 'AS',
+                             'MAPE', 'SMAPE', 'RMSPE', 'MTD_p2',
+                             'EMLAE', 'MALE', 'MAE', 'RMSE', 'MedAE', 'MTD_p1',
+                             'MSE', 'MSLE',
+                             'VAR', 'R2', 'PR', 'SR', 'KT', 'WT', 'MGC']
+        eval_metr.index = np.arange(len(eval_metr))
+        eval_ppfx_all = pd.concat([eval_metr, ppfx_all], axis=1, join='inner')
+        eval_ppfx_all = eval_ppfx_all.reindex(columns=list(eval_ppfx_all.columns[:2]) + list(eval_ppfx_all.columns[-12:]) + list(eval_ppfx_all.columns[2: -12]))
+        eval_ppfx_all.to_csv(f'D:\Work info\WestUnion\data\processed\\{organ}\\'
+                           f'eval_ppfx_all_re_code_processed_{code_processed}.csv', encoding='utf_8_sig')
+        eval_ppfx_all_seg = eval_ppfx_all[(eval_ppfx_all['ppfx'] > 0) & (eval_ppfx_all['ppfx'] < 1) & (eval_ppfx_all['alpha'] > 0) & (eval_ppfx_all['alpha'] < 1)]
+        eval_ppfx_all_seg_no = eval_ppfx_all_seg.drop(columns=['bg_sort_name', 'md_sort_name', 'sm_sort_name', 'name'])
+        eval_ppfx_all_seg_no.to_excel(f'D:\Work info\WestUnion\data\processed\\{organ}\\'
+                                 f'eval_ppfx_all_seg_no_code_processed_{code_processed}.xlsx', encoding='utf_8_sig')
+
+        for _ in range(4):  # 按顺序分别观察4个指标：alpha, AS, ppfx, profit 的分布
+            f = fitter.Fitter(eval_ppfx_all_seg[eval_ppfx_all_seg.columns[_]], distributions='common')
             f.fit()
-            print(f.summary())
+            print(f'\n{f.summary()}\n')
+            name = list(f.get_best().keys())[0]
+            print(f'best distribution: {name}''\n')
             f.plot_pdf()
+            plt.xlabel(f'{eval_ppfx_all_seg.columns[_]}')
+            plt.ylabel('Probability')
+            plt.title('comparison of distributions')
             plt.show()
-            news_order = st.gamma.ppf(ppfx_all['ppfx'][_], *f.fitted_param['gamma'])
-            organ_pred = organ_pred_all[organ_pred_all['organ'] == list(organ_sale_all.groupby('organ').groups.keys())[_]]['predict']
-            alpha.append(np.median(abs((organ_pred - organ_sale) / (news_order - organ_sale))))
+            plt.plot(f.x, f.y, 'b-.', label='f.y')
+            plt.plot(f.x, f.fitted_pdf[name], 'r-', label="f.fitted_pdf")
+            plt.xlabel(f'{eval_ppfx_all_seg.columns[_]}')
+            plt.ylabel('Probability')
+            plt.title(name)
+            plt.legend()
+            plt.show()
 
-        print('\n', 'alpha:', '\n', pd.Series(alpha), '\n', '\n', 'ppfx(i.e. gross margin ratio):', '\n',
-              ppfx_all['ppfx'].loc[:len(organ_sale_all.groupby('organ').groups.keys())-1])
+        # sparate the infomation of six hirarchies
+        ppfx_org = eval_ppfx_all_seg[pd.isnull(eval_ppfx_all_seg['class'])].dropna(axis=1)
+        ppfx_cls = eval_ppfx_all_seg[pd.notnull(eval_ppfx_all_seg['class']) & pd.isnull(eval_ppfx_all_seg['bg_sort'])].dropna(axis=1)
+        ppfx_bg = eval_ppfx_all_seg[pd.notnull(eval_ppfx_all_seg['bg_sort']) & pd.isnull(eval_ppfx_all_seg['md_sort'])].dropna(axis=1)
+        ppfx_md = eval_ppfx_all_seg[pd.notnull(eval_ppfx_all_seg['md_sort']) & pd.isnull(eval_ppfx_all_seg['sm_sort'])].dropna(axis=1)
+        ppfx_sm = eval_ppfx_all_seg[pd.notnull(eval_ppfx_all_seg['sm_sort']) & pd.isnull(eval_ppfx_all_seg['code'])].dropna(axis=1)
+        ppfx_cd = eval_ppfx_all_seg[pd.notnull(eval_ppfx_all_seg['code'])].dropna(axis=1)
+        ppfx_scater = pd.concat([ppfx_org[['alpha', 'ppfx']], ppfx_cls[['alpha', 'ppfx']], ppfx_bg[['alpha', 'ppfx']],
+                                ppfx_md[['alpha', 'ppfx']], ppfx_sm[['alpha', 'ppfx']], ppfx_cd[['alpha', 'ppfx']]], axis=1)
+        # plot the scatter of 'ppfx' and 'alpha' within six hierarchies
+        i = 4
+        for _ in range(0, len(ppfx_scater.columns), 2):
+            plt.scatter(x=ppfx_scater.iloc[:, _+1], y=ppfx_scater.iloc[:, _])
+            plt.xlim(0, 1)
+            plt.ylim(0, 1)
+            plt.xlabel('Gross Margin: ppfx')
+            plt.ylabel('Relative Accuracy: alpha')
+            plt.title(f"{eval_ppfx_all_seg_no.columns[i]}", fontsize=14)
+            i += 1
+            ax = plt.gca()  # 获得坐标轴的句柄
+            ax.xaxis.set_major_locator(plt.MultipleLocator(0.1))  # 以每0.1间隔显示
+            ax.yaxis.set_major_locator(plt.MultipleLocator(0.1))  # 以每0.1间隔显示
+            plt.show()
+
+        # plot boxplot of 'class' hierarchy
+        ppfx_md['class'].replace(to_replace=['蔬菜课', '水果课', '水产课'],
+                                 value=['Vegetable Class', 'Fruit Class', 'Aquatic Class'], inplace=True)
+        for _ in range(len(ppfx_md['class'].value_counts())):
+            ppfx_md_cls = ppfx_md[ppfx_md['class'] == ppfx_md['class'].value_counts().index[_]]
+            ax = sns.boxplot(x='class', y='alpha', data=ppfx_md_cls)
+            plt.show()
+            ax = sns.boxplot(x='class', y='ppfx', data=ppfx_md_cls)
+            plt.show()
+        ax = sns.boxplot(x='class', y='alpha', data=ppfx_md, hue='class', color='r')
+        plt.show()
+        ax = sns.boxplot(x='class', y='ppfx', data=ppfx_md, hue='class', color='b')
+        plt.show()
+        ax1 = sns.boxplot(x='class', y='alpha', data=ppfx_md, color='r')
+        ax1.set_title('alpha and ppfx of different classes')
+        ax2 = plt.twinx(ax1)
+        ax2 = sns.boxplot(x='class', y='ppfx', data=ppfx_md, ax=ax2, color='b')
+        plt.show()

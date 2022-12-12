@@ -6,7 +6,9 @@ pd.set_option('display.max_rows', 8)
 
 
 organ = 10
-sort = 2
+sort = 20
+decim = 4
+
 if organ == 1:
     organ = 'DH'
     sort = '鸡蛋'
@@ -23,7 +25,7 @@ account = pd.read_csv(f"D:\Work info\WestUnion\data\origin\\{organ}\\account.csv
                       parse_dates=['busdate'], infer_datetime_format=True)
 print(f'\naccount:\n\nshape: {account.shape}\n\ndtypes:\n{account.dtypes}\n\nisnull-columns:\n'
       f'{account.isnull().sum()}\n\nisnull-rows-ratio-avg(%):'
-      f'\n{round(sum(account.isnull().sum()) / (len(account) * max(1, sum(account.isnull().any()))) * 100, 2)}\n')
+      f'\n{round(sum(account.isnull().sum()) / (len(account) * max(1, sum(account.isnull().any()))) * 100, decim)}\n')
 running = pd.read_csv(f"D:\Work info\WestUnion\data\origin\\{organ}\\running.csv",
                       parse_dates=['selldate'], dtype={'code': str})
 running['selltime'] = running['selltime'].apply(lambda x: x[:8])  # 截取出时分秒
@@ -31,12 +33,12 @@ running['selltime'] = pd.to_datetime(running['selltime'], format='%H:%M:%S')
 running['selltime'] = running['selltime'].dt.time  # 去掉to_datetime自动生成的年月日
 print(f'\nrunning:\n\nshape: {running.shape}\n\ndtypes:\n{running.dtypes}\n\nisnull-columns:\n'
       f'{running.isnull().sum()}\n\nisnull-rows-ratio-avg(%):'
-      f'\n{round(sum(running.isnull().sum()) / (len(running) * max(1, sum(running.isnull().any()))) * 100, 2)}\n')
+      f'\n{round(sum(running.isnull().sum()) / (len(running) * max(1, sum(running.isnull().any()))) * 100, decim)}\n')
 stock = pd.read_csv(f"D:\Work info\WestUnion\data\origin\\{organ}\\stock.csv",
                     parse_dates=['busdate'], infer_datetime_format=True, dtype={'code': str})
 print(f'\nstock:\n\nshape: {stock.shape}\n\ndtypes:\n{stock.dtypes}\n\nisnull-columns:\n'
       f'{stock.isnull().sum()}\n\nisnull-rows-ratio-avg(%):'
-      f'\n{round(sum(stock.isnull().sum()) / (len(stock) * max(1, sum(stock.isnull().any()))) * 100, 2)}\n')
+      f'\n{round(sum(stock.isnull().sum()) / (len(stock) * max(1, sum(stock.isnull().any()))) * 100, decim)}\n')
 
 match organ:
     case 'DH':
@@ -65,7 +67,7 @@ match organ:
                                 parse_dates=['busdate'], infer_datetime_format=True, dtype={'code': str})
         print(f'\npromotion:\n\nshape: {promotion.shape}\n\ndtypes:\n{promotion.dtypes}\n\nisnull-columns:\n'
               f'{promotion.isnull().sum()}\n\nisnull-rows-ratio-avg(%):'
-              f'\n{round(sum(promotion.isnull().sum()) / (len(promotion) * max(1, sum(promotion.isnull().any()))) * 100, 2)}\n')
+              f'\n{round(sum(promotion.isnull().sum()) / (len(promotion) * max(1, sum(promotion.isnull().any()))) * 100, decim)}\n')
         # screening commodity and promotion sheets and other four sheets by requirement
         match sort:
             case '肉':
@@ -113,10 +115,10 @@ match organ:
 
 print(f'\ncommodity:\n\nshape: {commodity.shape}\n\ndtypes:\n{commodity.dtypes}\n\nisnull-columns:\n'
       f'{commodity.isnull().sum()}\n\nisnull-rows-ratio-avg(%):'
-      f'\n{round(sum(commodity.isnull().sum()) / (len(commodity) * max(1, sum(commodity.isnull().any()))) * 100, 2)}\n')
+      f'\n{round(sum(commodity.isnull().sum()) / (len(commodity) * max(1, sum(commodity.isnull().any()))) * 100, decim)}\n')
 print(f'\nprediction:\n\nshape: {prediction.shape}\n\ndtypes:\n{prediction.dtypes}\n\nisnull-columns:\n'
       f'{prediction.isnull().sum()}\n\nisnull-rows-ratio-avg(%):'
-      f'\n{round(sum(prediction.isnull().sum()) / (len(prediction) * max(1, sum(prediction.isnull().any()))) * 100, 2)}\n')
+      f'\n{round(sum(prediction.isnull().sum()) / (len(prediction) * max(1, sum(prediction.isnull().any()))) * 100, decim)}\n')
 
 # merge sheets in order
 match organ:
