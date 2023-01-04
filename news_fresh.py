@@ -19,12 +19,11 @@ pd.set_option('display.min_rows', 20)
 organ = 'HLJ'
 decim = 2
 multiplier = 100
-
-process_type = 10
-truncated = 10
-code_processed = 10
+process_type = 20
 
 if process_type == 1:
+    truncated = 10
+
     process_type = 'fundamental sheets process'
     if truncated == 1:
         truncated = 'keep rest days'
@@ -32,13 +31,18 @@ if process_type == 1:
         truncated = 'delete rest days'
     else:
         truncated = 'no delete'
+
 elif process_type == 2:
     run_pri_range = 10  # %
+
     process_type = 'running'
+
 else:
+    code_processed = 1
     seg_day = datetime.datetime(2022, 8, 1)
     acct_pri_range = 10  # %
     acct_ppfx_range = 10  # %
+
     process_type = 'forecasting and newsvendor comparison'
     if code_processed == 1:
         code_processed = True
@@ -231,6 +235,7 @@ match process_type:
               f'{pred_acct_comty_stk.isnull().sum()}\n\nisnull-rows-ratio-avg(%):'
               f'\n{round(sum(pred_acct_comty_stk.isnull().sum()) / (len(pred_acct_comty_stk) * max(1, sum(pred_acct_comty_stk.isnull().any()))) * multiplier, decim)}\n')
 
+        pred_acct_comty_stk['organ'].replace(to_replace=['门店B', '门店C', '门店D'], value=['B', 'C', 'D'], inplace=True)
         smape = 2 * abs((pred_acct_comty_stk['predict'] - pred_acct_comty_stk['theory_sale'])
                         / (pred_acct_comty_stk['predict'] + pred_acct_comty_stk['theory_sale']))
         pred_acct_comty_stk = pred_acct_comty_stk[(smape < 1) | pd.isnull(pred_acct_comty_stk['predict']) | pd.isnull(pred_acct_comty_stk['theory_sale'])]
@@ -704,7 +709,8 @@ match process_type:
                     "alpha中元素的顺序与ppfx_all中行的顺序不匹配，即alpha与ppfx,GrossMargin(%)的对应关系错误，结果不可用")
             eval_ppfx_all_seg_no = eval_ppfx_all_seg.drop(columns=['bg_sort_name', 'md_sort_name', 'sm_sort_name', 'name'])
             eval_ppfx_all_seg_no.to_excel(f'D:\Work info\WestUnion\data\processed\\{organ}\\'
-                                     f'eval_ppfx_all_seg_no__code_processed_{code_processed}.xlsx', encoding='utf_8_sig')
+                                          f'eval_ppfx_all_seg_no__code_processed_{code_processed}.xlsx',
+                                          encoding='utf_8_sig', sheet_name='Metrics', index_label='index')
 
 
         # 按顺序分别观察4个指标：alpha(%), AA(%), ppfx(%), profit(%) 的分布
