@@ -34,14 +34,13 @@ if process_type == 1:
 
 elif process_type == 2:
     run_pri_range = 10  # %
-
     process_type = 'running'
 
 else:
     code_processed = 1
     seg_day = datetime.datetime(2022, 8, 1)
-    acct_pri_range = 10  # %
-    acct_ppfx_range = 10  # %
+    acct_pri_range = 5  # %
+    acct_ppfx_range = 5  # %
 
     process_type = 'forecasting and newsvendor comparison'
     if code_processed == 1:
@@ -215,7 +214,7 @@ match process_type:
         if sum(acct_comty_stk.isnull().T.any()) > 0:
             acct_comty_stk.drop(index=acct_comty_stk[acct_comty_stk.isnull().T.any()].index, inplace=True)
         # screen out the rows whose stock were still remaining and no discount in one day's selling
-        # acct_comty_stk = acct_comty_stk[(acct_comty_stk['amou_stock'] != 0) & (acct_comty_stk['sum_disc'] == 0)]
+        acct_comty_stk = acct_comty_stk[(acct_comty_stk['amou_stock'] != 0) & (acct_comty_stk['sum_disc'] == 0)]
         pred = pd.read_csv(f"D:\Work info\WestUnion\data\origin\\{organ}\\fresh-forecast-order.csv",
                            parse_dates=['busdate'], infer_datetime_format=True,
                            dtype={'bg_sort': str, 'md_sort': str, 'sm_sort': str, 'code': str},
@@ -236,11 +235,10 @@ match process_type:
               f'\n{round(sum(pred_acct_comty_stk.isnull().sum()) / (len(pred_acct_comty_stk) * max(1, sum(pred_acct_comty_stk.isnull().any()))) * multiplier, decim)}\n')
 
         pred_acct_comty_stk['organ'].replace(to_replace=['门店B', '门店C', '门店D'], value=['B', 'C', 'D'], inplace=True)
-        smape = 2 * abs((pred_acct_comty_stk['predict'] - pred_acct_comty_stk['theory_sale'])
-                        / (pred_acct_comty_stk['predict'] + pred_acct_comty_stk['theory_sale']))
-        pred_acct_comty_stk = pred_acct_comty_stk[(smape < 1) | pd.isnull(pred_acct_comty_stk['predict']) | pd.isnull(pred_acct_comty_stk['theory_sale'])]
+        # smape = 2 * abs((pred_acct_comty_stk['predict'] - pred_acct_comty_stk['theory_sale'])
+        #                 / (pred_acct_comty_stk['predict'] + pred_acct_comty_stk['theory_sale']))
+        # pred_acct_comty_stk = pred_acct_comty_stk[(smape < 1) | pd.isnull(pred_acct_comty_stk['predict']) | pd.isnull(pred_acct_comty_stk['theory_sale'])]
         pred_acct_comty_stk.sort_values(by=['organ', 'class', 'bg_sort', 'md_sort', 'sm_sort', 'code', 'busdate'], ascending=True, inplace=True)
-
 
         # obtain validation set.
         print('\nvalidation set:')
@@ -613,8 +611,8 @@ match process_type:
                                                                   ['alpha(%)', 'AA(%)', 'ppfx(%)']] * multiplier
             eval_ppfx_all['GrossMargin(%)'] = eval_ppfx_all['GrossMargin(%)'].round(0)
             eval_ppfx_all_seg = eval_ppfx_all[
-                (eval_ppfx_all['ppfx(%)'] >= 0) & (eval_ppfx_all['ppfx(%)'] <= multiplier) &
-                (eval_ppfx_all['alpha(%)'] >= 0) & (eval_ppfx_all['alpha(%)'] <= 2 * multiplier)]  # to overlap upper samples in 'alpha'
+                (eval_ppfx_all['ppfx(%)'] >= -10*multiplier) & (eval_ppfx_all['ppfx(%)'] <= 10*multiplier) &
+                (eval_ppfx_all['alpha(%)'] >= -100 * multiplier) & (eval_ppfx_all['alpha(%)'] <= 100 * multiplier)]  # to overlap upper samples in 'alpha'
             eval_ppfx_all_seg_no = eval_ppfx_all_seg.drop(columns=['bg_sort_name', 'md_sort_name', 'sm_sort_name', 'name'])
 
 
@@ -703,8 +701,8 @@ match process_type:
             eval_ppfx_all.to_csv(f'D:\Work info\WestUnion\data\processed\\{organ}\\'
                                f'eval_ppfx_all__code_processed_{code_processed}.csv', encoding='utf_8_sig')
             eval_ppfx_all_seg = eval_ppfx_all[
-                (eval_ppfx_all['ppfx(%)'] > 0) & (eval_ppfx_all['ppfx(%)'] < multiplier) &
-                (eval_ppfx_all['alpha(%)'] > 0) & (eval_ppfx_all['alpha(%)'] < multiplier)]
+                (eval_ppfx_all['ppfx(%)'] >= -10 * multiplier) & (eval_ppfx_all['ppfx(%)'] <= 10 * multiplier) &
+                (eval_ppfx_all['alpha(%)'] >= -100 * multiplier) & (eval_ppfx_all['alpha(%)'] <= 100 * multiplier)]
             if len(eval_ppfx_all) != len(ppfx_all_valid):
                 raise Exception(
                     "alpha中元素的顺序与ppfx_all中行的顺序不匹配，即alpha与ppfx,GrossMargin(%)的对应关系错误，结果不可用")
@@ -751,15 +749,18 @@ match process_type:
         for _ in range(0, len(ppfx_scater.columns), 2):
             plt.scatter(x=ppfx_scater.iloc[:, _+1], y=ppfx_scater.iloc[:, _])
             plt.xlim(0, multiplier)
-            if ppfx_scater.iloc[:, _].max() < multiplier:
+            if (ppfx_scater.iloc[:, _].max() < multiplier) & (ppfx_scater.iloc[:, _].min() > 0):
                 plt.ylim(0, multiplier)
+                plt.yticks(np.arange(0, multiplier+1, step=10))  # 以每10间隔显示y坐标
+            else:
+                plt.yticks(
+                    np.arange(np.floor(ppfx_scater.iloc[:, _].min()), np.ceil(ppfx_scater.iloc[:, _].max()), step=30))  # 以每30间隔显示y坐标
             plt.xlabel('Gross Margin: ppfx(%)')
             plt.ylabel('Relative Accuracy: alpha(%)')
             plt.title(f"{eval_ppfx_all_seg_no.columns[i]}", fontsize=14)
             i += 1
             ax = plt.gca()  # 获得坐标轴的句柄
-            ax.xaxis.set_major_locator(plt.MultipleLocator(multiplier / 10))  # 以每10间隔显示
-            ax.yaxis.set_major_locator(plt.MultipleLocator(multiplier / 10))  # 以每10间隔显示
+            ax.xaxis.set_major_locator(plt.MultipleLocator(multiplier / 10))  # 以每10间隔显示x坐标
             plt.show()
 
 
@@ -782,7 +783,7 @@ match process_type:
         bp = sns.boxplot(data=df_box, x='variable', y='value', hue='class',
                          hue_order=['Vegetable', 'Fruit', 'Aquatic'],
                          # 'Vegetable', 'Meat', 'Fruit', 'Bread', 'Aquatic'
-                         order=['ppfx(%)', 'alpha(%)', 'AA(%)'], fliersize=4.5,
+                         order=['ppfx(%)', 'alpha(%)', 'AA(%)'], showfliers=False, fliersize=4.5,
                          # palette=palettable.tableau.TrafficLight_9.mpl_colors,
                          flierprops = {'marker': 'o',  # 异常值形状
                                         # 'markerfacecolor': 'red',  # 形状填充色
@@ -792,8 +793,8 @@ match process_type:
                          meanprops={'marker': 'D', 'markerfacecolor': 'red'},  # 设置均值属性
                          )
         plt.xticks([0, 1, 2], ['$\\beta$', '$\\alpha$', 'AA'])  # 按位置顺序0,1,2给x轴的变量命名
-        if code_processed is True:
-            plt.ylim(0, multiplier)
+        # if code_processed is True:
+        #     plt.ylim(0, multiplier)
         plt.title('mid_sort')
         ax = plt.gca()  # 获得坐标轴的句柄
         ax.yaxis.set_major_locator(plt.MultipleLocator(multiplier / 10))  # 以每(multiplier / 10)间隔显示
@@ -809,11 +810,11 @@ match process_type:
 
         fig = plt.figure()
         # df_box = ppfx_md[ppfx_md['class'] != 'Fruit'][['alpha(%)', 'AA(%)', 'ppfx(%)', 'class']]
-        df_box = ppfx_sm[['alpha(%)', 'ppfx(%)', 'class']]
+        df_box = ppfx_sm[['alpha(%)', 'ppfx(%)', 'class', 'AA(%)']]
         df_box = df_box.melt(id_vars='class')
         bp = sns.boxplot(data=df_box, x='variable', y='value', hue='class',
                          hue_order=['Vegetable', 'Fruit', 'Aquatic'],
-                         order=['ppfx(%)', 'alpha(%)'], fliersize=4.5,
+                         order=['ppfx(%)', 'alpha(%)', 'AA(%)'], showfliers=False, fliersize=4.5,
                          # palette=palettable.tableau.TrafficLight_9.mpl_colors,
                          flierprops = {'marker': 'o',  # 异常值形状
                                         # 'markerfacecolor': 'red',  # 形状填充色
@@ -822,9 +823,9 @@ match process_type:
                          showmeans=True,  # 箱图显示均值，
                          meanprops={'marker': 'D', 'markerfacecolor': 'red'},  # 设置均值属性
                          )
-        plt.xticks([0, 1], ['$\\beta$', '$\\alpha$'])  # 按位置顺序0,1,2给x轴的变量命名
-        if code_processed is True:
-            plt.ylim(0, multiplier)
+        plt.xticks([0, 1, 2], ['$\\beta$', '$\\alpha$', 'AA'])  # 按位置顺序0,1,2给x轴的变量命名
+        # if code_processed is True:
+        #     plt.ylim(0, multiplier)
         plt.title('small_sort')
         ax = plt.gca()  # 获得坐标轴的句柄
         ax.yaxis.set_major_locator(plt.MultipleLocator(multiplier / 10))  # 以每(multiplier / 10)间隔显示
@@ -839,12 +840,12 @@ match process_type:
         f.clear()  # 先画图plt.show，再释放内存
 
         fig = plt.figure()
-        df_box = ppfx_cd[(ppfx_cd['class'] == 'Fruit') | (ppfx_cd['class'] == 'Vegetable')][['alpha(%)', 'ppfx(%)', 'class']]
-        # df_box = ppfx_cd[['alpha(%)', 'ppfx(%)', 'class']]
+        # df_box = ppfx_cd[(ppfx_cd['class'] == 'Fruit') | (ppfx_cd['class'] == 'Vegetable')][['alpha(%)', 'ppfx(%)', 'class']]
+        df_box = ppfx_cd[['alpha(%)', 'ppfx(%)', 'class', 'AA(%)']]
         df_box = df_box.melt(id_vars='class')
         bp = sns.boxplot(data=df_box, x='variable', y='value', hue='class',
-                         hue_order=['Vegetable', 'Fruit'],
-                         order=['ppfx(%)', 'alpha(%)'], fliersize=4.5,
+                         hue_order=['Vegetable', 'Fruit', 'Aquatic'],
+                         order=['ppfx(%)', 'alpha(%)', 'AA(%)'], showfliers=False, fliersize=4.5,
                          # palette=palettable.tableau.TrafficLight_9.mpl_colors,
                          flierprops = {'marker': 'o',  # 异常值形状
                                         # 'markerfacecolor': 'red',  # 形状填充色
@@ -853,12 +854,12 @@ match process_type:
                          showmeans=True,  # 箱图显示均值，
                          meanprops={'marker': 'D', 'markerfacecolor': 'red'},  # 设置均值属性
                          )
-        plt.xticks([0, 1], ['$\\beta$', '$\\alpha$'])  # 按位置顺序0,1,2给x轴的变量命名
-        if code_processed is True:
-            plt.ylim(0, multiplier)
+        plt.xticks([0, 1, 2], ['$\\beta$', '$\\alpha$', 'AA'])  # 按位置顺序0,1,2给x轴的变量命名
+        # if code_processed is True:
+        #     plt.ylim(0, multiplier)
         plt.title('code')
         ax = plt.gca()  # 获得坐标轴的句柄
-        ax.yaxis.set_major_locator(plt.MultipleLocator(multiplier / 10))  # 以每(multiplier / 10)间隔显示
+        ax.yaxis.set_major_locator(plt.MultipleLocator(multiplier / 5))  # 以每(multiplier / 5)间隔显示
         bp.set(xlabel=None)
         bp.set(ylabel=None)
         adjust_box_widths(fig)
