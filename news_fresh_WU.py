@@ -1,3 +1,4 @@
+#-*- coding: utf-8 -*-
 import pandas as pd
 import numpy as np
 import chinese_calendar as calendar
@@ -14,6 +15,17 @@ sys.path.append("/D:/Work%20info/Repositories/regression_evaluation_main/regress
 import regression_evaluation_def as ref
 pd.set_option('display.max_columns', None)
 pd.set_option('display.min_rows', 20)
+plt.rcParams['font.sans-serif']=['SimHei']  # 用来正常显示中文标签
+plt.rcParams['axes.unicode_minus']=False  # 用来正常显示负号
+"""
+中文字体	    说明
+‘SimHei’	中文黑体
+‘Kaiti’	    中文楷体
+‘LiSu’	    中文隶书
+‘FangSong’	中文仿宋
+‘YouYuan’	中文幼圆
+’STSong‘    华文宋体
+"""
 
 
 organ = 'HLJ'
@@ -39,8 +51,8 @@ elif process_type == 2:
 else:
     code_processed = 1
     seg_day = datetime.datetime(2022, 8, 1)
-    acct_pri_range = 5  # %
-    acct_ppfx_range = 5  # %
+    acct_pri_range = 10  # %
+    acct_ppfx_range = 10  # %
 
     process_type = 'forecasting and newsvendor comparison'
     if code_processed == 1:
@@ -699,7 +711,7 @@ match process_type:
              'R2', 'PR', 'SR', 'KT', 'WT', 'MGC'])
 
             eval_ppfx_all.to_csv(f'D:\Work info\WestUnion\data\processed\\{organ}\\'
-                               f'eval_ppfx_all__code_processed_{code_processed}.csv', encoding='utf_8_sig')
+                               f'eval_ppfx_all__code_processed_{code_processed}_range{acct_pri_range}_{datetime.date.today()}.csv', encoding='utf_8_sig')
             eval_ppfx_all_seg = eval_ppfx_all[
                 (eval_ppfx_all['ppfx(%)'] >= -10 * multiplier) & (eval_ppfx_all['ppfx(%)'] <= 10 * multiplier) &
                 (eval_ppfx_all['alpha(%)'] >= -100 * multiplier) & (eval_ppfx_all['alpha(%)'] <= 100 * multiplier)]
@@ -708,7 +720,7 @@ match process_type:
                     "alpha中元素的顺序与ppfx_all中行的顺序不匹配，即alpha与ppfx,GrossMargin(%)的对应关系错误，结果不可用")
             eval_ppfx_all_seg_no = eval_ppfx_all_seg.drop(columns=['bg_sort_name', 'md_sort_name', 'sm_sort_name', 'name'])
             eval_ppfx_all_seg_no.to_excel(f'D:\Work info\WestUnion\data\processed\\{organ}\\'
-                                          f'eval_ppfx_all_seg_no__code_processed_{code_processed}.xlsx',
+                                          f'eval_ppfx_all_seg_no__code_processed_{code_processed}_range{acct_pri_range}_{datetime.date.today()}.xlsx',
                                           encoding='utf_8_sig', sheet_name='Metrics', index_label='index')
 
 
@@ -718,16 +730,16 @@ match process_type:
             f.fit()
             print(f'\n{f.summary()}\n')
             name = list(f.get_best().keys())[0]
-            print(f'best distribution: {name}''\n')
+            print(f'最接近的分布: {name}''\n')
             f.plot_pdf()
             plt.xlabel(f'{eval_ppfx_all_seg.columns[_]}')
-            plt.ylabel('Probability')
-            plt.title('comparison of distributions')
+            plt.ylabel('概率')
+            plt.title('用真实值拟合出的10种常见分布')
             plt.show()
-            plt.plot(f.x, f.y, 'b-.', label='f.y')
-            plt.plot(f.x, f.fitted_pdf[name], 'r-', label="f.fitted_pdf")
+            plt.plot(f.x, f.y, 'b-.', label='真实值')
+            plt.plot(f.x, f.fitted_pdf[name], 'r-', label="概率密度函数的拟合值")
             plt.xlabel(f'{eval_ppfx_all_seg.columns[_]}')
-            plt.ylabel('Probability')
+            plt.ylabel('概率')
             plt.title(name)
             plt.legend()
             plt.show()
@@ -740,132 +752,104 @@ match process_type:
         ppfx_md = eval_ppfx_all_seg[pd.notnull(eval_ppfx_all_seg['md_sort']) & pd.isnull(eval_ppfx_all_seg['sm_sort'])].dropna(axis=1)
         ppfx_sm = eval_ppfx_all_seg[pd.notnull(eval_ppfx_all_seg['sm_sort']) & pd.isnull(eval_ppfx_all_seg['code'])].dropna(axis=1)
         ppfx_cd = eval_ppfx_all_seg[pd.notnull(eval_ppfx_all_seg['code'])].dropna(axis=1)
-        ppfx_scater = pd.concat([ppfx_org[['alpha(%)', 'ppfx(%)']], ppfx_cls[['alpha(%)', 'ppfx(%)']],
-                                 ppfx_bg[['alpha(%)', 'ppfx(%)']], ppfx_md[['alpha(%)', 'ppfx(%)']],
-                                 ppfx_sm[['alpha(%)', 'ppfx(%)']], ppfx_cd[['alpha(%)', 'ppfx(%)']]], axis=1)
+        ppfx_scater = pd.concat([ppfx_org[['alpha(%)', 'GrossMargin(%)']], ppfx_cls[['alpha(%)', 'GrossMargin(%)']],
+                                 ppfx_bg[['alpha(%)', 'GrossMargin(%)']], ppfx_md[['alpha(%)', 'GrossMargin(%)']],
+                                 ppfx_sm[['alpha(%)', 'GrossMargin(%)']], ppfx_cd[['alpha(%)', 'GrossMargin(%)']]], axis=1)
 
         # plot the scatter of 'ppfx' and 'alpha' within six hierarchies
         i = 4
         for _ in range(0, len(ppfx_scater.columns), 2):
-            plt.scatter(x=ppfx_scater.iloc[:, _+1], y=ppfx_scater.iloc[:, _])
-            plt.xlim(0, multiplier)
-            if (ppfx_scater.iloc[:, _].max() < multiplier) & (ppfx_scater.iloc[:, _].min() > 0):
-                plt.ylim(0, multiplier)
-                plt.yticks(np.arange(0, multiplier+1, step=10))  # 以每10间隔显示y坐标
+            if _ != len(ppfx_scater.columns) - 2:
+                plt.scatter(x=ppfx_scater.iloc[:, _+1], y=ppfx_scater.iloc[:, _])
+                plt.xlim(0, multiplier*1)
+                if (ppfx_scater.iloc[:, _].max() < multiplier) & (ppfx_scater.iloc[:, _].min() > 0):
+                    plt.ylim(0, multiplier)
+                    plt.yticks(np.arange(0, multiplier+1, step=10))  # 以每10间隔显示y坐标
+                else:
+                    plt.yticks(
+                        np.arange(np.floor(ppfx_scater.iloc[:, _].min()), np.ceil(ppfx_scater.iloc[:, _].max()), step=25))  # 以每25间隔显示y坐标
+                plt.xlabel('Gross Margin: 毛利率(%)')
+                plt.ylabel('Relative Accuracy: 相对精确度(%)')
+                plt.title(f"{eval_ppfx_all_seg_no.columns[i]}", fontsize=14)
+                i += 1
+                ax = plt.gca()  # 获得坐标轴的句柄
+                ax.xaxis.set_major_locator(plt.MultipleLocator(multiplier / 10))  # 以每10间隔显示x坐标
+                plt.show()
             else:
-                plt.yticks(
-                    np.arange(np.floor(ppfx_scater.iloc[:, _].min()), np.ceil(ppfx_scater.iloc[:, _].max()), step=30))  # 以每30间隔显示y坐标
-            plt.xlabel('Gross Margin: ppfx(%)')
-            plt.ylabel('Relative Accuracy: alpha(%)')
-            plt.title(f"{eval_ppfx_all_seg_no.columns[i]}", fontsize=14)
-            i += 1
-            ax = plt.gca()  # 获得坐标轴的句柄
-            ax.xaxis.set_major_locator(plt.MultipleLocator(multiplier / 10))  # 以每10间隔显示x坐标
-            plt.show()
+                plt.scatter(x=ppfx_scater.iloc[:, _ + 1], y=ppfx_scater.iloc[:, _])
+                plt.xlim(-20, multiplier * 2)
+                if (ppfx_scater.iloc[:, _].max() < multiplier) & (ppfx_scater.iloc[:, _].min() > 0):
+                    plt.ylim(0, multiplier)
+                    plt.yticks(np.arange(0, multiplier + 1, step=10))  # 以每10间隔显示y坐标
+                else:
+                    plt.yticks(
+                        np.arange(np.floor(ppfx_scater.iloc[:, _].min()), np.ceil(ppfx_scater.iloc[:, _].max()),
+                                  step=100))  # 以每100间隔显示y坐标
+                plt.xlabel('Gross Margin: 毛利率(%)')
+                plt.ylabel('Relative Accuracy: 相对精确度(%)')
+                plt.title(f"{eval_ppfx_all_seg_no.columns[i]}", fontsize=14)
+                i += 1
+                ax = plt.gca()  # 获得坐标轴的句柄
+                ax.xaxis.set_major_locator(plt.MultipleLocator(multiplier / 10))  # 以每10间隔显示x坐标
+                plt.show()
 
-
-        # plot boxplot of 'md_sort' hierarchy
-        for _ in range(len(ppfx_md['class'].value_counts())):
-            ppfx_md_cls = ppfx_md[ppfx_md['class'] == ppfx_md['class'].value_counts().index[_]]
-            ax = sns.boxplot(x='class', y='alpha(%)', data=ppfx_md_cls)
-            plt.show()
-            ax = sns.boxplot(x='class', y='ppfx(%)', data=ppfx_md_cls)
-            plt.show()
-        ax = sns.boxplot(x='class', y='alpha(%)', data=ppfx_md, color='r')
-        plt.show()
-        ax = sns.boxplot(x='class', y='ppfx(%)', data=ppfx_md, color='b')
-        plt.show()
 
         fig = plt.figure()
-        # df_box = ppfx_md[ppfx_md['class'] != 'Fruit'][['alpha(%)', 'AA(%)', 'ppfx(%)', 'class']]
-        df_box = ppfx_md[['alpha(%)', 'ppfx(%)', 'class', 'AA(%)']]
-        df_box = df_box.melt(id_vars='class')
-        bp = sns.boxplot(data=df_box, x='variable', y='value', hue='class',
-                         hue_order=['Vegetable', 'Fruit', 'Aquatic'],
-                         # 'Vegetable', 'Meat', 'Fruit', 'Bread', 'Aquatic'
-                         order=['ppfx(%)', 'alpha(%)', 'AA(%)'], showfliers=False, fliersize=4.5,
-                         # palette=palettable.tableau.TrafficLight_9.mpl_colors,
+        df_box = ppfx_org[['alpha(%)', 'GrossMargin(%)', 'organ', 'AA(%)']]
+        df_box = df_box.melt(id_vars='organ')
+        bp = sns.boxplot(data=df_box, x='variable', y='value', hue='organ',
+                         hue_order=['B', 'C', 'D'],
+                         order=['GrossMargin(%)', 'alpha(%)', 'AA(%)'], showfliers=False, fliersize=4.5,
                          flierprops = {'marker': 'o',  # 异常值形状
-                                        # 'markerfacecolor': 'red',  # 形状填充色
                                         },
                          whiskerprops={'linestyle':'--', 'color':'black'},  # 设置上下须属性
                          showmeans=True,  # 箱图显示均值，
                          meanprops={'marker': 'D', 'markerfacecolor': 'red'},  # 设置均值属性
                          )
-        plt.xticks([0, 1, 2], ['$\\beta$', '$\\alpha$', 'AA'])  # 按位置顺序0,1,2给x轴的变量命名
-        # if code_processed is True:
-        #     plt.ylim(0, multiplier)
-        plt.title('mid_sort')
-        ax = plt.gca()  # 获得坐标轴的句柄
+        plt.xticks([0, 1, 2], ['毛利率(%)', '相对精度(%)', '绝对精度(%)'])  # 按位置顺序0,1,2给x轴的变量命名
+        plt.title('门店层级')
+        ax = plt.gca()
         ax.yaxis.set_major_locator(plt.MultipleLocator(multiplier / 10))  # 以每(multiplier / 10)间隔显示
         bp.set(xlabel=None)
         bp.set(ylabel=None)
         adjust_box_widths(fig)
-        f = plt.gcf()  # 获取当前图像
+        f = plt.gcf()
         fmt = ['svg', 'png', 'pdf']
         for _ in range(len(fmt)):
             f.savefig(f'D:\Work info\WestUnion\data\processed\\{organ}\\boxplot_md.{fmt[_]}')
         plt.show()
-        f.clear()  # 先画图plt.show，再释放内存
+        f.clear()
 
-        fig = plt.figure()
-        # df_box = ppfx_md[ppfx_md['class'] != 'Fruit'][['alpha(%)', 'AA(%)', 'ppfx(%)', 'class']]
-        df_box = ppfx_sm[['alpha(%)', 'ppfx(%)', 'class', 'AA(%)']]
-        df_box = df_box.melt(id_vars='class')
-        bp = sns.boxplot(data=df_box, x='variable', y='value', hue='class',
-                         hue_order=['Vegetable', 'Fruit', 'Aquatic'],
-                         order=['ppfx(%)', 'alpha(%)', 'AA(%)'], showfliers=False, fliersize=4.5,
-                         # palette=palettable.tableau.TrafficLight_9.mpl_colors,
-                         flierprops = {'marker': 'o',  # 异常值形状
-                                        # 'markerfacecolor': 'red',  # 形状填充色
-                                        },
-                         whiskerprops={'linestyle':'--', 'color':'black'},  # 设置上下须属性
-                         showmeans=True,  # 箱图显示均值，
-                         meanprops={'marker': 'D', 'markerfacecolor': 'red'},  # 设置均值属性
-                         )
-        plt.xticks([0, 1, 2], ['$\\beta$', '$\\alpha$', 'AA'])  # 按位置顺序0,1,2给x轴的变量命名
-        # if code_processed is True:
-        #     plt.ylim(0, multiplier)
-        plt.title('small_sort')
-        ax = plt.gca()  # 获得坐标轴的句柄
-        ax.yaxis.set_major_locator(plt.MultipleLocator(multiplier / 10))  # 以每(multiplier / 10)间隔显示
-        bp.set(xlabel=None)
-        bp.set(ylabel=None)
-        adjust_box_widths(fig)
-        f = plt.gcf()  # 获取当前图像
-        fmt = ['svg', 'png', 'pdf']
-        for _ in range(len(fmt)):
-            f.savefig(f'D:\Work info\WestUnion\data\processed\\{organ}\\boxplot_sm.{fmt[_]}')
-        plt.show()
-        f.clear()  # 先画图plt.show，再释放内存
-
-        fig = plt.figure()
-        # df_box = ppfx_cd[(ppfx_cd['class'] == 'Fruit') | (ppfx_cd['class'] == 'Vegetable')][['alpha(%)', 'ppfx(%)', 'class']]
-        df_box = ppfx_cd[['alpha(%)', 'ppfx(%)', 'class', 'AA(%)']]
-        df_box = df_box.melt(id_vars='class')
-        bp = sns.boxplot(data=df_box, x='variable', y='value', hue='class',
-                         hue_order=['Vegetable', 'Fruit', 'Aquatic'],
-                         order=['ppfx(%)', 'alpha(%)', 'AA(%)'], showfliers=False, fliersize=4.5,
-                         # palette=palettable.tableau.TrafficLight_9.mpl_colors,
-                         flierprops = {'marker': 'o',  # 异常值形状
-                                        # 'markerfacecolor': 'red',  # 形状填充色
-                                        },
-                         whiskerprops={'linestyle':'--', 'color':'black'},  # 设置上下须属性
-                         showmeans=True,  # 箱图显示均值，
-                         meanprops={'marker': 'D', 'markerfacecolor': 'red'},  # 设置均值属性
-                         )
-        plt.xticks([0, 1, 2], ['$\\beta$', '$\\alpha$', 'AA'])  # 按位置顺序0,1,2给x轴的变量命名
-        # if code_processed is True:
-        #     plt.ylim(0, multiplier)
-        plt.title('code')
-        ax = plt.gca()  # 获得坐标轴的句柄
-        ax.yaxis.set_major_locator(plt.MultipleLocator(multiplier / 5))  # 以每(multiplier / 5)间隔显示
-        bp.set(xlabel=None)
-        bp.set(ylabel=None)
-        adjust_box_widths(fig)
-        f = plt.gcf()  # 获取当前图像
-        fmt = ['svg', 'png', 'pdf']
-        for _ in range(len(fmt)):
-            f.savefig(f'D:\Work info\WestUnion\data\processed\\{organ}\\boxplot_cd.{fmt[_]}')
-        plt.show()
-        f.clear()  # 先画图plt.show，再释放内存
+        hierachy = [ppfx_cls, ppfx_bg, ppfx_md, ppfx_sm, ppfx_cd]
+        title = ['课别', '大分类', '中分类', '小分类', '单品']
+        for _ in range(len(hierachy)):
+            fig = plt.figure()
+            # df_box = ppfx_cd[(ppfx_cd['class'] == 'Fruit') | (ppfx_cd['class'] == 'Vegetable')][['alpha(%)', 'ppfx(%)', 'class']]
+            df_box = hierachy[_][['alpha(%)', 'GrossMargin(%)', 'class', 'AA(%)']]
+            df_box = df_box.melt(id_vars='class')
+            bp = sns.boxplot(data=df_box, x='variable', y='value', hue='class',
+                             hue_order=['Vegetable', 'Fruit', 'Aquatic'],
+                             order=['GrossMargin(%)', 'alpha(%)', 'AA(%)'], showfliers=False, fliersize=4.5,
+                             # palette=palettable.tableau.TrafficLight_9.mpl_colors,
+                             flierprops = {'marker': 'o',  # 异常值形状
+                                            # 'markerfacecolor': 'red',  # 形状填充色
+                                            },
+                             whiskerprops={'linestyle':'--', 'color':'black'},  # 设置上下须属性
+                             showmeans=True,  # 箱图显示均值，
+                             meanprops={'marker': 'D', 'markerfacecolor': 'red'},  # 设置均值属性
+                             )
+            plt.xticks([0, 1, 2], ['毛利率(%)', '相对精度(%)', '绝对精度(%)'])  # 按位置顺序0,1,2给x轴的变量命名
+            # if code_processed is True:
+            #     plt.ylim(0, multiplier)
+            plt.title(f'{title[_]}层级')
+            ax = plt.gca()  # 获得坐标轴的句柄
+            ax.yaxis.set_major_locator(plt.MultipleLocator(multiplier / 5))  # 以每(multiplier / 5)间隔显示
+            bp.set(xlabel=None)
+            bp.set(ylabel=None)
+            adjust_box_widths(fig)
+            f = plt.gcf()  # 获取当前图像
+            fmt = ['svg', 'png', 'pdf']
+            for _ in range(len(fmt)):
+                f.savefig(f'D:\Work info\WestUnion\data\processed\\{organ}\\boxplot_cd.{fmt[_]}')
+            plt.show()
+            f.clear()  # 先画图plt.show，再释放内存
