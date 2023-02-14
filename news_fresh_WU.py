@@ -7,7 +7,6 @@ import scipy.stats as st
 import matplotlib.pyplot as plt
 from matplotlib.patches import PathPatch
 import seaborn as sns
-# import palettable
 import datetime
 import sys
 # 添加其他文件夹路径的脚本到系统临时路径，不会保留在环境变量中，每次重新append即可
@@ -144,7 +143,7 @@ match process_type:
             case _:
                 acct_comty_stk.to_csv(f'D:\Work info\WestUnion\data\processed\\{organ}\\merge-sheets-no-truncated-no-screen.csv',
                                       encoding='utf_8_sig', index=False)
-                sys.exit()
+                # sys.exit()
 
         print(f'acct_comty_stk truncated {acct_comty_stk.shape}')
         codes_group = acct_comty_stk.groupby(['organ', 'code'])
@@ -251,6 +250,7 @@ match process_type:
         #                 / (pred_acct_comty_stk['predict'] + pred_acct_comty_stk['theory_sale']))
         # pred_acct_comty_stk = pred_acct_comty_stk[(smape < 1) | pd.isnull(pred_acct_comty_stk['predict']) | pd.isnull(pred_acct_comty_stk['theory_sale'])]
         pred_acct_comty_stk.sort_values(by=['organ', 'class', 'bg_sort', 'md_sort', 'sm_sort', 'code', 'busdate'], ascending=True, inplace=True)
+
 
         # obtain validation set.
         print('\nvalidation set:')
@@ -734,7 +734,7 @@ match process_type:
             f.plot_pdf()
             plt.xlabel(f'{eval_ppfx_all_seg.columns[_]}')
             plt.ylabel('概率')
-            plt.title('用真实值拟合出的10种常见分布')
+            plt.title('常见分布对真实值的拟合')
             plt.show()
             plt.plot(f.x, f.y, 'b-.', label='真实值')
             plt.plot(f.x, f.fitted_pdf[name], 'r-', label="概率密度函数的拟合值")
@@ -761,15 +761,15 @@ match process_type:
         for _ in range(0, len(ppfx_scater.columns), 2):
             if _ != len(ppfx_scater.columns) - 2:
                 plt.scatter(x=ppfx_scater.iloc[:, _+1], y=ppfx_scater.iloc[:, _])
-                plt.xlim(0, multiplier*1)
+                plt.xlim(0, multiplier*1.1)
                 if (ppfx_scater.iloc[:, _].max() < multiplier) & (ppfx_scater.iloc[:, _].min() > 0):
                     plt.ylim(0, multiplier)
                     plt.yticks(np.arange(0, multiplier+1, step=10))  # 以每10间隔显示y坐标
                 else:
                     plt.yticks(
-                        np.arange(np.floor(ppfx_scater.iloc[:, _].min()), np.ceil(ppfx_scater.iloc[:, _].max()), step=25))  # 以每25间隔显示y坐标
+                        np.arange(np.floor(ppfx_scater.iloc[:, _].min()), np.ceil(ppfx_scater.iloc[:, _].max()), step=20))  # 以每20间隔显示y坐标
                 plt.xlabel('Gross Margin: 毛利率(%)')
-                plt.ylabel('Relative Accuracy: 相对精确度(%)')
+                plt.ylabel('Relative Accuracy: 相对权重(%)')
                 plt.title(f"{eval_ppfx_all_seg_no.columns[i]}", fontsize=14)
                 i += 1
                 ax = plt.gca()  # 获得坐标轴的句柄
@@ -777,16 +777,16 @@ match process_type:
                 plt.show()
             else:
                 plt.scatter(x=ppfx_scater.iloc[:, _ + 1], y=ppfx_scater.iloc[:, _])
-                plt.xlim(-20, multiplier * 2)
+                plt.xlim(0, multiplier * 1.5)
                 if (ppfx_scater.iloc[:, _].max() < multiplier) & (ppfx_scater.iloc[:, _].min() > 0):
                     plt.ylim(0, multiplier)
                     plt.yticks(np.arange(0, multiplier + 1, step=10))  # 以每10间隔显示y坐标
                 else:
                     plt.yticks(
                         np.arange(np.floor(ppfx_scater.iloc[:, _].min()), np.ceil(ppfx_scater.iloc[:, _].max()),
-                                  step=100))  # 以每100间隔显示y坐标
+                                  step=50))  # 以每50间隔显示y坐标
                 plt.xlabel('Gross Margin: 毛利率(%)')
-                plt.ylabel('Relative Accuracy: 相对精确度(%)')
+                plt.ylabel('Relative Accuracy: 相对权重(%)')
                 plt.title(f"{eval_ppfx_all_seg_no.columns[i]}", fontsize=14)
                 i += 1
                 ax = plt.gca()  # 获得坐标轴的句柄
@@ -806,7 +806,7 @@ match process_type:
                          showmeans=True,  # 箱图显示均值，
                          meanprops={'marker': 'D', 'markerfacecolor': 'red'},  # 设置均值属性
                          )
-        plt.xticks([0, 1, 2], ['毛利率(%)', '相对精度(%)', '绝对精度(%)'])  # 按位置顺序0,1,2给x轴的变量命名
+        plt.xticks([0, 1, 2], ['毛利率(%)', '相对权重(%)', '绝对精度(%)'])  # 按位置顺序0,1,2给x轴的变量命名
         plt.title('门店层级')
         ax = plt.gca()
         ax.yaxis.set_major_locator(plt.MultipleLocator(multiplier / 10))  # 以每(multiplier / 10)间隔显示
@@ -838,7 +838,7 @@ match process_type:
                              showmeans=True,  # 箱图显示均值，
                              meanprops={'marker': 'D', 'markerfacecolor': 'red'},  # 设置均值属性
                              )
-            plt.xticks([0, 1, 2], ['毛利率(%)', '相对精度(%)', '绝对精度(%)'])  # 按位置顺序0,1,2给x轴的变量命名
+            plt.xticks([0, 1, 2], ['毛利率(%)', '相对权重(%)', '绝对精度(%)'])  # 按位置顺序0,1,2给x轴的变量命名
             # if code_processed is True:
             #     plt.ylim(0, multiplier)
             plt.title(f'{title[_]}层级')

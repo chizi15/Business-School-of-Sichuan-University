@@ -6,11 +6,10 @@ import scipy.stats as st
 import matplotlib.pyplot as plt
 from matplotlib.patches import PathPatch
 import seaborn as sns
-# import palettable
 import datetime
 import sys
 # 添加其他文件夹路径的脚本到系统临时路径，不会保留在环境变量中，每次重新append即可
-sys.path.append("/D:/Work%20info/Repositories/regression_evaluation_main/regression_evaluation_def.py")
+sys.path.append("D:\\Work info\\Repositories\\regression_evaluation_main\\regression_evaluation_def.py")
 import regression_evaluation_def as ref
 pd.set_option('display.max_columns', None)
 pd.set_option('display.min_rows', 20)
@@ -182,7 +181,7 @@ match process_type:
 
 
     case 'forecasting and newsvendor comparison':
-        account_ori = pd.read_csv(f"D:\Work info\WestUnion\data\origin\\{organ}\\account.csv",
+        account_ori = pd.read_csv(f"D:\Work info\WestUnion\data\processed\\{organ}\\no_name\\account.csv",
                               parse_dates=['busdate'], infer_datetime_format=True, dtype={'code': str})
         account_ori['price'] = account_ori['sum_price'] / account_ori['amount']
         account_ori['ppfx_acct'] = (account_ori['sum_price'] - account_ori['sum_cost']) / account_ori['sum_price']
@@ -199,9 +198,14 @@ match process_type:
         account = pd.merge(account_ori, pri_ppfx_avg, how='left', on=['organ', 'class', 'code'])
         acct_seg = account[(account['price'] <= account['price_hb']) & (account['price'] >= account['price_lb']) & \
         (account['ppfx_acct'] <= account['ppfx_hb']) & (account['ppfx_acct'] >= account['ppfx_lb'])]
-        commodity = pd.read_csv(f"D:\Work info\WestUnion\data\origin\\{organ}\\commodity.csv",
+        commodity = pd.read_csv(f"D:\Work info\WestUnion\data\processed\\{organ}\\no_name\\commodity.csv",
                                 dtype={'code': str, 'sm_sort': str, 'md_sort': str, 'bg_sort': str})
-        stock = pd.read_csv(f"D:\Work info\WestUnion\data\origin\\{organ}\\stock.csv",
+        # 生成不带中文的commodity
+        # commodity = pd.read_csv(f"D:\Work info\WestUnion\data\origin\\{organ}\\commodity.csv",
+        #                         dtype={'code': str, 'sm_sort': str, 'md_sort': str, 'bg_sort': str})
+        # commodity[['name', 'sm_sort_name', 'md_sort_name', 'bg_sort_name']] = '1'
+        # commodity.to_csv(f'D:\Work info\WestUnion\data\processed\\{organ}\\no_name\\commodity.csv', index=False, encoding='utf_8_sig')
+        stock = pd.read_csv(f"D:\Work info\WestUnion\data\processed\\{organ}\\no_name\\stock.csv",
                             parse_dates=['busdate'], infer_datetime_format=True, dtype={'code': str})
         acct_comty = pd.merge(acct_seg, commodity, how='left', on=['class', 'code'])
         acct_comty_stk = pd.merge(acct_comty, stock, how='left', on=['organ', 'class', 'code', 'busdate'])
@@ -215,13 +219,22 @@ match process_type:
         if sum(acct_comty_stk.isnull().T.any()) > 0:
             acct_comty_stk.drop(index=acct_comty_stk[acct_comty_stk.isnull().T.any()].index, inplace=True)
         # screen out the rows whose stock were still remaining and no discount in one day's selling
-        # acct_comty_stk = acct_comty_stk[(acct_comty_stk['amou_stock'] != 0) & (acct_comty_stk['sum_disc'] == 0)]
-        pred = pd.read_csv(f"D:\Work info\WestUnion\data\origin\\{organ}\\fresh-forecast-order.csv",
+        acct_comty_stk = acct_comty_stk[(acct_comty_stk['amou_stock'] != 0) & (acct_comty_stk['sum_disc'] == 0)]
+        pred = pd.read_csv(f"D:\Work info\WestUnion\data\processed\\{organ}\\no_name\\fresh-forecast-order.csv",
                            parse_dates=['busdate'], infer_datetime_format=True,
                            dtype={'bg_sort': str, 'md_sort': str, 'sm_sort': str, 'code': str},
                            names=['Unnamed', 'organ', 'class', 'bg_sort', 'bg_sort_name', 'md_sort', 'md_sort_name',
                                   'sm_sort', 'sm_sort_name', 'code', 'name', 'busdate', 'theory_sale', 'real_sale',
                                   'predict', 'advise_order', 'real_order'], header=0)
+        # 生成不带中文的fresh-forecast-order
+        # pred = pd.read_csv(f"D:\Work info\WestUnion\data\origin\\{organ}\\fresh-forecast-order.csv",
+        #                    parse_dates=['busdate'], infer_datetime_format=True,
+        #                    dtype={'bg_sort': str, 'md_sort': str, 'sm_sort': str, 'code': str},
+        #                    names=['Unnamed', 'organ', 'class', 'bg_sort', 'bg_sort_name', 'md_sort', 'md_sort_name',
+        #                           'sm_sort', 'sm_sort_name', 'code', 'name', 'busdate', 'theory_sale', 'real_sale',
+        #                           'predict', 'advise_order', 'real_order'], header=0)
+        # pred[['Unnamed', 'bg_sort_name', 'md_sort_name', 'sm_sort_name', 'name']] = '1'
+        # pred.to_csv(f'D:\Work info\WestUnion\data\processed\\{organ}\\no_name\\fresh-forecast-order.csv', index=False, encoding='utf_8_sig')
         print(f'\npred:\n\nshape: {pred.shape}\n\ndtypes:\n{pred.dtypes}\n\nisnull-columns:\n'
               f'{pred.isnull().sum()}\n\nisnull-rows-ratio-avg(%):'
               f'\n{round(sum(pred.isnull().sum()) / (len(pred) * max(1, sum(pred.isnull().any()))) * multiplier, decim)}\n')
@@ -234,11 +247,7 @@ match process_type:
         print(f'\npred_acct_comty_stk:\n\nshape: {pred_acct_comty_stk.shape}\n\ndtypes:\n{pred_acct_comty_stk.dtypes}\n\nisnull-columns:\n'
               f'{pred_acct_comty_stk.isnull().sum()}\n\nisnull-rows-ratio-avg(%):'
               f'\n{round(sum(pred_acct_comty_stk.isnull().sum()) / (len(pred_acct_comty_stk) * max(1, sum(pred_acct_comty_stk.isnull().any()))) * multiplier, decim)}\n')
-
         pred_acct_comty_stk['organ'].replace(to_replace=['门店B', '门店C', '门店D'], value=['B', 'C', 'D'], inplace=True)
-        smape = 2 * abs((pred_acct_comty_stk['predict'] - pred_acct_comty_stk['theory_sale'])
-                        / (pred_acct_comty_stk['predict'] + pred_acct_comty_stk['theory_sale']))
-        pred_acct_comty_stk = pred_acct_comty_stk[(smape < 1) | pd.isnull(pred_acct_comty_stk['predict']) | pd.isnull(pred_acct_comty_stk['theory_sale'])]
         pred_acct_comty_stk.sort_values(by=['organ', 'class', 'bg_sort', 'md_sort', 'sm_sort', 'code', 'busdate'], ascending=True, inplace=True)
 
 
@@ -247,7 +256,7 @@ match process_type:
         # forecast is not started among 2022 spring festival
         pred_acct_comty_stk_valid = pred_acct_comty_stk[pred_acct_comty_stk['busdate'] >= seg_day]
         # 注意，print(f’‘)里{}外不能带:,{}内带:表示设置数值类型
-        pred_acct_comty_stk_valid.to_csv(f'D:\Work info\WestUnion\data\processed\\{organ}\\process_type-{process_type}-'  
+        pred_acct_comty_stk_valid.to_csv(f'D:\Work info\WestUnion\data\processed\\{organ}\\no_name\\results\\process_type-{process_type}-'  
                                    f'pred_acct_comty_stk_valid.csv', index=False, encoding='utf_8_sig')
 
         # profit = (售价 - 进价) / 进价
@@ -284,7 +293,7 @@ match process_type:
                      'sm_sort', 'sm_sort_name', 'code', 'name']]
         profit_ori_valid = pd.concat([profit_organ_valid, profit_class_valid, profit_big_valid, profit_mid_valid, profit_small_valid, profit_code_valid],
                                ignore_index=True)
-        # profit_ori.to_csv(f'D:\Work info\WestUnion\data\processed\\{organ}\\profit_ori.csv', encoding='utf_8_sig')
+        # profit_ori.to_csv(f'D:\Work info\WestUnion\data\processed\\{organ}\\no_name\\results\\profit_ori.csv', encoding='utf_8_sig')
         # 说明：因为后面不是用profit_ori作为自变量来算newsvendor的最优解，而是用分位点ppfx作为自变量利润，
         # 所以是否对profit_ori做筛选不影响后续newsvendor的最优解的计算。
 
@@ -352,7 +361,7 @@ match process_type:
         # obtain train set.
         print('\ntrain set:')
         pred_acct_comty_stk_train = pred_acct_comty_stk[~(pred_acct_comty_stk['busdate'] >= seg_day)]
-        pred_acct_comty_stk_train.to_csv(f'D:\Work info\WestUnion\data\processed\\{organ}\\process_type-{process_type}-'  
+        pred_acct_comty_stk_train.to_csv(f'D:\Work info\WestUnion\data\processed\\{organ}\\no_name\\results\\process_type-{process_type}-'  
                                    f'pred_acct_comty_stk_train.csv', index=False, encoding='utf_8_sig')
 
         group_organ_train = pred_acct_comty_stk_train.groupby(['organ'], as_index=False)
@@ -700,8 +709,8 @@ match process_type:
              'EMLAE', 'MALE', 'MAE', 'RMSE', 'MedAE', 'MTD_p1', 'MSE', 'MSLE', 'VAR',
              'R2', 'PR', 'SR', 'KT', 'WT', 'MGC'])
 
-            eval_ppfx_all.to_csv(f'D:\Work info\WestUnion\data\processed\\{organ}\\'
-                               f'eval_ppfx_all__code_processed_{code_processed}.csv', encoding='utf_8_sig')
+            eval_ppfx_all.to_csv(f'D:\Work info\WestUnion\data\processed\\{organ}\\no_name\\results\\'
+                               f'eval_ppfx_all__code_processed_{code_processed}_{datetime.date.today()}.csv', encoding='utf_8_sig')
             eval_ppfx_all_seg = eval_ppfx_all[
                 (eval_ppfx_all['ppfx(%)'] > 0) & (eval_ppfx_all['ppfx(%)'] < multiplier) &
                 (eval_ppfx_all['alpha(%)'] > 0) & (eval_ppfx_all['alpha(%)'] < multiplier)]
@@ -709,8 +718,8 @@ match process_type:
                 raise Exception(
                     "alpha中元素的顺序与ppfx_all中行的顺序不匹配，即alpha与ppfx,GrossMargin(%)的对应关系错误，结果不可用")
             eval_ppfx_all_seg_no = eval_ppfx_all_seg.drop(columns=['bg_sort_name', 'md_sort_name', 'sm_sort_name', 'name'])
-            eval_ppfx_all_seg_no.to_excel(f'D:\Work info\WestUnion\data\processed\\{organ}\\'
-                                          f'eval_ppfx_all_seg_no__code_processed_{code_processed}.xlsx',
+            eval_ppfx_all_seg_no.to_excel(f'D:\Work info\WestUnion\data\processed\\{organ}\\no_name\\results\\'
+                                          f'eval_ppfx_all_seg_no__code_processed_{code_processed}_{datetime.date.today()}.xlsx',
                                           encoding='utf_8_sig', sheet_name='Metrics', index_label='index')
 
 
@@ -763,108 +772,36 @@ match process_type:
             plt.show()
 
 
-        # plot boxplot of 'md_sort' hierarchy
-        for _ in range(len(ppfx_md['class'].value_counts())):
-            ppfx_md_cls = ppfx_md[ppfx_md['class'] == ppfx_md['class'].value_counts().index[_]]
-            ax = sns.boxplot(x='class', y='alpha(%)', data=ppfx_md_cls)
+        hierachy = [ppfx_cls, ppfx_bg, ppfx_md, ppfx_sm, ppfx_cd]
+        title = ['class', 'bg_sort', 'md_sort', 'sm_sort', 'code']
+        for _ in range(len(hierachy)):
+            fig = plt.figure()
+            # df_box = ppfx_cd[(ppfx_cd['class'] == 'Fruit') | (ppfx_cd['class'] == 'Vegetable')][['alpha(%)', 'ppfx(%)', 'class']]
+            df_box = hierachy[_][['alpha(%)', 'ppfx(%)', 'class']]
+            df_box = df_box.melt(id_vars='class')
+            bp = sns.boxplot(data=df_box, x='variable', y='value', hue='class',
+                             hue_order=['Vegetable', 'Fruit', 'Aquatic'],
+                             order=['ppfx(%)', 'alpha(%)'], showfliers=True, fliersize=4.5,
+                             # palette=palettable.tableau.TrafficLight_9.mpl_colors,
+                             flierprops = {'marker': 'o',  # 异常值形状
+                                            # 'markerfacecolor': 'red',  # 形状填充色
+                                            },
+                             whiskerprops={'linestyle':'--', 'color':'black'},  # 设置上下须属性
+                             showmeans=True,  # 箱图显示均值，
+                             meanprops={'marker': 'D', 'markerfacecolor': 'red'},  # 设置均值属性
+                             )
+            plt.xticks([0, 1], ['$\\beta$', '$\\alpha$'])  # 按位置顺序0,1,2给x轴的变量命名
+            if code_processed is True:
+                plt.ylim(0, multiplier)
+            plt.title(f'{title[_]}')
+            ax = plt.gca()  # 获得坐标轴的句柄
+            ax.yaxis.set_major_locator(plt.MultipleLocator(multiplier / 5))  # 以每(multiplier / 5)间隔显示
+            bp.set(xlabel=None)
+            bp.set(ylabel=None)
+            adjust_box_widths(fig)
+            f = plt.gcf()  # 获取当前图像
+            fmt = ['svg', 'png', 'pdf']
+            for _ in range(len(fmt)):
+                f.savefig(f'D:\Work info\WestUnion\data\processed\\{organ}\\no_name\\results\\boxplot_cd.{fmt[_]}')
             plt.show()
-            ax = sns.boxplot(x='class', y='ppfx(%)', data=ppfx_md_cls)
-            plt.show()
-        ax = sns.boxplot(x='class', y='alpha(%)', data=ppfx_md, color='r')
-        plt.show()
-        ax = sns.boxplot(x='class', y='ppfx(%)', data=ppfx_md, color='b')
-        plt.show()
-
-        fig = plt.figure()
-        # df_box = ppfx_md[ppfx_md['class'] != 'Fruit'][['alpha(%)', 'AA(%)', 'ppfx(%)', 'class']]
-        df_box = ppfx_md[['alpha(%)', 'ppfx(%)', 'class', 'AA(%)']]
-        df_box = df_box.melt(id_vars='class')
-        bp = sns.boxplot(data=df_box, x='variable', y='value', hue='class',
-                         hue_order=['Vegetable', 'Fruit', 'Aquatic'],
-                         # 'Vegetable', 'Meat', 'Fruit', 'Bread', 'Aquatic'
-                         order=['ppfx(%)', 'alpha(%)', 'AA(%)'], fliersize=4.5,
-                         # palette=palettable.tableau.TrafficLight_9.mpl_colors,
-                         flierprops = {'marker': 'o',  # 异常值形状
-                                        # 'markerfacecolor': 'red',  # 形状填充色
-                                        },
-                         whiskerprops={'linestyle':'--', 'color':'black'},  # 设置上下须属性
-                         showmeans=True,  # 箱图显示均值，
-                         meanprops={'marker': 'D', 'markerfacecolor': 'red'},  # 设置均值属性
-                         )
-        plt.xticks([0, 1, 2], ['$\\beta$', '$\\alpha$', 'AA'])  # 按位置顺序0,1,2给x轴的变量命名
-        if code_processed is True:
-            plt.ylim(0, multiplier)
-        plt.title('mid_sort')
-        ax = plt.gca()  # 获得坐标轴的句柄
-        ax.yaxis.set_major_locator(plt.MultipleLocator(multiplier / 10))  # 以每(multiplier / 10)间隔显示
-        bp.set(xlabel=None)
-        bp.set(ylabel=None)
-        adjust_box_widths(fig)
-        f = plt.gcf()  # 获取当前图像
-        fmt = ['svg', 'png', 'pdf']
-        for _ in range(len(fmt)):
-            f.savefig(f'D:\Work info\WestUnion\data\processed\\{organ}\\boxplot_md.{fmt[_]}')
-        plt.show()
-        f.clear()  # 先画图plt.show，再释放内存
-
-        fig = plt.figure()
-        # df_box = ppfx_md[ppfx_md['class'] != 'Fruit'][['alpha(%)', 'AA(%)', 'ppfx(%)', 'class']]
-        df_box = ppfx_sm[['alpha(%)', 'ppfx(%)', 'class']]
-        df_box = df_box.melt(id_vars='class')
-        bp = sns.boxplot(data=df_box, x='variable', y='value', hue='class',
-                         hue_order=['Vegetable', 'Fruit', 'Aquatic'],
-                         order=['ppfx(%)', 'alpha(%)'], fliersize=4.5,
-                         # palette=palettable.tableau.TrafficLight_9.mpl_colors,
-                         flierprops = {'marker': 'o',  # 异常值形状
-                                        # 'markerfacecolor': 'red',  # 形状填充色
-                                        },
-                         whiskerprops={'linestyle':'--', 'color':'black'},  # 设置上下须属性
-                         showmeans=True,  # 箱图显示均值，
-                         meanprops={'marker': 'D', 'markerfacecolor': 'red'},  # 设置均值属性
-                         )
-        plt.xticks([0, 1], ['$\\beta$', '$\\alpha$'])  # 按位置顺序0,1,2给x轴的变量命名
-        if code_processed is True:
-            plt.ylim(0, multiplier)
-        plt.title('small_sort')
-        ax = plt.gca()  # 获得坐标轴的句柄
-        ax.yaxis.set_major_locator(plt.MultipleLocator(multiplier / 10))  # 以每(multiplier / 10)间隔显示
-        bp.set(xlabel=None)
-        bp.set(ylabel=None)
-        adjust_box_widths(fig)
-        f = plt.gcf()  # 获取当前图像
-        fmt = ['svg', 'png', 'pdf']
-        for _ in range(len(fmt)):
-            f.savefig(f'D:\Work info\WestUnion\data\processed\\{organ}\\boxplot_sm.{fmt[_]}')
-        plt.show()
-        f.clear()  # 先画图plt.show，再释放内存
-
-        fig = plt.figure()
-        df_box = ppfx_cd[(ppfx_cd['class'] == 'Fruit') | (ppfx_cd['class'] == 'Vegetable')][['alpha(%)', 'ppfx(%)', 'class']]
-        # df_box = ppfx_cd[['alpha(%)', 'ppfx(%)', 'class']]
-        df_box = df_box.melt(id_vars='class')
-        bp = sns.boxplot(data=df_box, x='variable', y='value', hue='class',
-                         hue_order=['Vegetable', 'Fruit'],
-                         order=['ppfx(%)', 'alpha(%)'], fliersize=4.5,
-                         # palette=palettable.tableau.TrafficLight_9.mpl_colors,
-                         flierprops = {'marker': 'o',  # 异常值形状
-                                        # 'markerfacecolor': 'red',  # 形状填充色
-                                        },
-                         whiskerprops={'linestyle':'--', 'color':'black'},  # 设置上下须属性
-                         showmeans=True,  # 箱图显示均值，
-                         meanprops={'marker': 'D', 'markerfacecolor': 'red'},  # 设置均值属性
-                         )
-        plt.xticks([0, 1], ['$\\beta$', '$\\alpha$'])  # 按位置顺序0,1,2给x轴的变量命名
-        if code_processed is True:
-            plt.ylim(0, multiplier)
-        plt.title('code')
-        ax = plt.gca()  # 获得坐标轴的句柄
-        ax.yaxis.set_major_locator(plt.MultipleLocator(multiplier / 10))  # 以每(multiplier / 10)间隔显示
-        bp.set(xlabel=None)
-        bp.set(ylabel=None)
-        adjust_box_widths(fig)
-        f = plt.gcf()  # 获取当前图像
-        fmt = ['svg', 'png', 'pdf']
-        for _ in range(len(fmt)):
-            f.savefig(f'D:\Work info\WestUnion\data\processed\\{organ}\\boxplot_cd.{fmt[_]}')
-        plt.show()
-        f.clear()  # 先画图plt.show，再释放内存
+            f.clear()  # 先画图plt.show，再释放内存
