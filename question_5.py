@@ -47,6 +47,7 @@ account_apple.rename(columns={'sum_sell': 'sum_price'}, inplace=True)
 account = pd.read_csv(r"D:\Work info\SCU\MathModeling\2023\data\ZNEW_DESENS\ZNEW_DESENS\sampledata\account.csv")
 account['busdate'] = pd.to_datetime(account['busdate'], infer_datetime_format=True)
 account_seg = account[account['class'] == '水果课']
+account_seg.sort_values(by=['busdate'], inplace=True)
 account_seg = account_seg.groupby(['busdate'])[['sum_cost']].mean().reset_index()
 
 account_apple = pd.merge(account_apple, account_seg, on='busdate', how='left')
@@ -151,6 +152,37 @@ f = fitter.Fitter(apple_train_amt_ext, distributions='gamma')
 f.fit()
 q_steady = stats.gamma.ppf(profit_avg, *f.fitted_param['gamma'])
 print(f'q_steady = {q_steady}', '\n')
+
+
+# 观察apple_train_amt_ext的分布情况
+f = fitter.Fitter(apple_train_amt_ext, distributions=['cauchy', 'chi2', 'expon', 'exponpow', 'gamma', 'lognorm', 'norm', 'powerlaw', 'irayleigh', 'uniform'], timeout=10)
+f.fit()
+comparison_of_distributions_apple = f.summary(Nbest=5)
+print(f'\n{comparison_of_distributions_apple}\n')
+comparison_of_distributions_apple.to_excel(r"D:\Work info\SCU\MathModeling\2023\data\processed\question5\results\comparison_of_distributions_apple.xlsx", sheet_name='comparison of apple distributions')
+
+name = list(f.get_best().keys())[0]
+print(f'best distribution: {name}''\n')
+f.plot_pdf(Nbest=5)
+figure = plt.gcf()  # 获取当前图像
+plt.xlabel('用于拟合分布的，苹果数据扩增后的历史销量')
+plt.ylabel('Probability')
+plt.title('comparison of apple distributions')
+plt.show()
+figure.savefig(r"D:\Work info\SCU\MathModeling\2023\data\processed\question5\results\comparison of distributions_apple.svg")
+figure.clear()  # 先画图plt.show，再释放内存
+
+figure = plt.gcf()  # 获取当前图像
+plt.plot(f.x, f.y, 'b-.', label='f.y')
+plt.plot(f.x, f.fitted_pdf[name], 'r-', label="f.fitted_pdf")
+plt.xlabel('用于拟合分布的，茄类数据扩增后的历史销量')
+plt.ylabel('Probability')
+plt.title(f'best distribution: {name}')
+plt.legend()
+plt.show()
+figure.savefig(r"D:\Work info\SCU\MathModeling\2023\data\processed\question5\results\best distribution_apple.svg")
+figure.clear()
+
 
 # 将时间效应加载到q_steady上，得到预测期的最优订货量q_star
 train_set = apple_prophet_amount[['ds', 'y', 'holiday_effect', 'weekly_effect', 'yearly_effect', 'holiday', 'weekday']]

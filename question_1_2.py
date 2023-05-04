@@ -36,6 +36,7 @@ interval_width = 0.95 # prophet的置信区间宽度
 # read and summerize data
 account = pd.read_csv(r"D:\Work info\SCU\MathModeling\2023\data\ZNEW_DESENS\ZNEW_DESENS\sampledata\account.csv")
 account['busdate'] = pd.to_datetime(account['busdate'], infer_datetime_format=True)
+account.sort_values(by=['busdate'], inplace=True)
 account['code'] = account['code'].astype('str')
 acct_grup = account.groupby(["organ", "code"])
 print(f'\naccount\n\nshape: {account.shape}\n\ndtypes:\n{account.dtypes}\n\nisnull-columns:\n{account.isnull().any()}'
@@ -151,7 +152,7 @@ sm_qielei_amt_ext_describe = pd.Series(sm_qielei_amt_ext, name='sm_qielei_amt_ex
 sm_qielei_amt_describe = sm_qielei['amt_no_effect'].describe()
 sm_qielei_amt_ext_compare = pd.concat([sm_qielei_amt_describe, sm_qielei_amt_ext_describe], axis=1).rename(columns={'amt_no_effect': 'sm_qielei_amt_describe'})
 print(sm_qielei_amt_ext_compare, '\n')
-sm_qielei_amount_effect_compare.to_excel(r"D:\Work info\SCU\MathModeling\2023\data\processed\question_1_2\sm_qielei_amount_effect_compare.xlsx", sheet_name='数据扩增前后，历史销量的描述性统计信息对比')
+sm_qielei_amt_ext_compare.to_excel(r"D:\Work info\SCU\MathModeling\2023\data\processed\question_1_2\sm_qielei_amt_ext_compare.xlsx", sheet_name='数据扩增前后，历史销量的描述性统计信息对比')
 
 # 给出sm_qielei_amt_ext和sm_qielei['amt_no_effect'].values的Shapiro-Wilk检验结果
 stat, p = stats.shapiro(sm_qielei_amt_ext)
@@ -172,6 +173,37 @@ f = fitter.Fitter(sm_qielei_amt_ext, distributions='gamma')
 f.fit()
 q_steady = stats.gamma.ppf(profit_avg, *f.fitted_param['gamma'])
 print(f'q_steady = {q_steady}', '\n')
+
+
+# 观察sm_qielei_amt_ext的分布情况
+f = fitter.Fitter(sm_qielei_amt_ext, distributions=['cauchy', 'chi2', 'expon', 'exponpow', 'gamma', 'lognorm', 'norm', 'powerlaw', 'irayleigh', 'uniform'], timeout=10)
+f.fit()
+comparison_of_distributions_qielei = f.summary(Nbest=5)
+print(f'\n{comparison_of_distributions_qielei}\n')
+comparison_of_distributions_qielei.to_excel(r"D:\Work info\SCU\MathModeling\2023\data\processed\question_1_2\results\comparison_of_distributions_qielei.xlsx", sheet_name='comparison of distributions_qielei')
+
+name = list(f.get_best().keys())[0]
+print(f'best distribution: {name}''\n')
+f.plot_pdf(Nbest=5)
+figure = plt.gcf()  # 获取当前图像
+plt.xlabel('用于拟合分布的，茄类数据扩增后的历史销量')
+plt.ylabel('Probability')
+plt.title('comparison of distributions_qielei')
+plt.show()
+figure.savefig(r"D:\Work info\SCU\MathModeling\2023\data\processed\question_1_2\results\comparison of distributions_qielei.svg")
+figure.clear()  # 先画图plt.show，再释放内存
+
+figure = plt.gcf()  # 获取当前图像
+plt.plot(f.x, f.y, 'b-.', label='f.y')
+plt.plot(f.x, f.fitted_pdf[name], 'r-', label="f.fitted_pdf")
+plt.xlabel('用于拟合分布的，茄类数据扩增后的历史销量')
+plt.ylabel('Probability')
+plt.title(f'best distribution: {name}')
+plt.legend()
+plt.show()
+figure.savefig(r"D:\Work info\SCU\MathModeling\2023\data\processed\question_1_2\results\best distribution_qielei.svg")
+figure.clear()
+
 
 # 将时间效应加载到q_steady上，得到预测期的最优订货量q_star
 train_set = qielei_prophet_amount[['ds', 'y', 'holiday_effect', 'weekly_effect', 'yearly_effect', 'holiday', 'weekday']]
@@ -201,6 +233,7 @@ all_set['y'][-periods:] = q_star
 all_set['y'][:-periods] = forecast_amount['yhat'][:-periods]
 all_set.drop(columns=['year', 'month', 'day'], inplace=True)
 all_set.rename(columns={'y': '预测销量', 'ds': '销售日期'}, inplace=True)
+all_set['训练集平均毛利率'] = profit_avg
 all_set.to_excel(r"D:\Work info\SCU\MathModeling\2023\data\processed\question_1_2\question_1_final_qielei_all_set.xlsx", index=False, encoding='utf-8-sig', sheet_name='问题1最终结果：茄类全集上的预测订货量及时间效应系数')
 
 
