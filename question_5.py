@@ -151,6 +151,7 @@ profit_avg = (account_apple_train['profit_daily'].mean() + np.percentile(account
 f = fitter.Fitter(apple_train_amt_ext, distributions='gamma')
 f.fit()
 q_steady = stats.gamma.ppf(profit_avg, *f.fitted_param['gamma'])
+print(f'拟合分布的最优参数是: \n {f.fitted_param["gamma"]}', '\n')
 print(f'q_steady = {q_steady}', '\n')
 
 
@@ -287,10 +288,12 @@ profit_star = (forecast['profit'].mean() + np.percentile(forecast['profit'], 50)
 f_star = fitter.Fitter(apple_train_amt_ext, distributions='gamma')
 f_star.fit()
 q_steady_star = stats.gamma.ppf(profit_star, *f_star.fitted_param['gamma'])
+print(f'拟合分布的最优参数是: \n {f.fitted_param["gamma"]}', '\n')
 print(f'q_steady_star = {q_steady_star}', '\n')
 
 all_set['total_effect'] = all_set[['holiday_effect', 'weekly_effect_avg', 'yearly_effect_avg']].sum(axis=1)
 q_star_new = q_steady_star * (1 + all_set['total_effect'][-periods:])
+forecast['第二次的平稳订货量'] = q_steady_star
 forecast['q_star_new'] = q_star_new
 forecast.rename(columns={'ds': '销售日期', 'yhat': '预测金额', 'price': '预测单价', 'cost': '预测成本', 'profit': '预测毛利率', 'q_star_new': '新订货量'}, inplace=True)
 forecast.to_excel(r"D:\Work info\SCU\MathModeling\2023\data\processed\question5\results\question_5_final_apple_forecast.xlsx", index=False, encoding='utf-8-sig', sheet_name='问题5最终结果：苹果在预测期每日的预测销售额、预测单价、预测成本、预测毛利率和新订货量')
