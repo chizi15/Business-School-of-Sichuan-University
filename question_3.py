@@ -44,6 +44,7 @@ run_apple.sort_values(by=['busdate', 'selltime'], inplace=True)
 run_apple = run_apple.groupby(['busdate', 'code'])[['amount', 'sum_sell', 'sum_disc']].sum().reset_index()
 account_apple = run_apple.groupby(['busdate'])[['amount', 'sum_sell', 'sum_disc']].mean().reset_index()
 account_apple.rename(columns={'sum_sell': 'sum_price'}, inplace=True)
+account_apple.drop(columns=['sum_disc'], inplace=True)
 
 account = pd.read_csv(r"D:\Work info\SCU\MathModeling\2023\data\ZNEW_DESENS\ZNEW_DESENS\sampledata\account.csv")
 account['busdate'] = pd.to_datetime(account['busdate'], infer_datetime_format=True)

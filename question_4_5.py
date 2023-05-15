@@ -10,6 +10,7 @@ base_path = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))  # 两�
 # 添加其他文件夹路径的脚本到系统临时路径，不会保留在环境变量中，每次重新append即可
 sys.path.append(base_path)  # regression_evaluation_main所在文件夹的绝对路径
 from regression_evaluation_main import regression_evaluation_def as ref
+pd.set_option('display.max_columns', None)
 pd.set_option('display.max_rows', 8)
 
 
@@ -17,11 +18,13 @@ coef = 0.5 # 相关系数排序分组时的阈值
 corr_neg = -0.3 # 销量与售价的负相关性阈值
 periods = 7 # 预测步数
 interval_width = 0.95 # prophet的置信区间宽度
+min_num = 0.0 # 设置预测销量、售价、毛利率、销售额的最小取值
 
 # 读取数据
 df = pd.read_csv(r"D:\Work info\SCU\MathModeling\2023\data\ZNEW_DESENS\ZNEW_DESENS\sampledata\account.csv")
 df.sort_values(by=['busdate'], inplace=True)
 df_students = df[df['busdate'].isin(df['busdate'].unique()[:-periods])]
+df_students.drop(columns=['sum_disc'], inplace=True)
 df_students.to_excel(r"D:\Work info\SCU\MathModeling\2023\data\processed\question_4\students_use_data\df_students.xlsx")
 df_students.to_excel(r"D:\Work info\SCU\MathModeling\2023\data\processed\question_5\students_use_data\df_students.xlsx")
 sort = pd.read_csv(r"D:\Work info\SCU\MathModeling\2023\data\ZNEW_DESENS\ZNEW_DESENS\sampledata\commodity.csv")
@@ -30,6 +33,7 @@ sort.to_excel(r"D:\Work info\SCU\MathModeling\2023\data\processed\question_5\stu
 # 拼接账表和商品资料表
 df = pd.merge(df, sort, how='left', on=['code', 'class'])
 df['busdate'] = pd.to_datetime(df['busdate'])
+df.drop(columns=['sum_disc'], inplace=True)
 df.to_excel(r"D:\Work info\SCU\MathModeling\2023\data\processed\question_4\teachers_use\data\df.xlsx")
 df.to_excel(r"D:\Work info\SCU\MathModeling\2023\data\processed\question_5\teachers_use\data\df.xlsx")
 # 向小分类层级聚合数据
@@ -52,7 +56,7 @@ for code, data in sale_sm.groupby(['sm_sort']):
     fig = plt.figure(figsize=(20, 10))
     plt.plot(data['busdate'], data['amount'])
     plt.title(f'{code}')
-    plt.show()
+    # plt.show()
     fig.savefig(r"D:\Work info\SCU\MathModeling\2023\data\processed\question_4\results\sm_sort\%s.svg" % code)
 fig.clear()
 
@@ -125,7 +129,7 @@ for i, df in enumerate(list_df_avg):
     fig = plt.figure(figsize=(20, 10))
     plt.plot(df['busdate'], df['amount'])
     plt.title(f'group{i+1}')
-    plt.show()
+    # plt.show()
     fig.savefig(r"D:\Work info\SCU\MathModeling\2023\data\processed\question_4\results\groups\group%s.svg" % (i+1))
 fig.clear()
 
@@ -147,8 +151,8 @@ weekly_prior_scale = 10
 yearly_prior_scale = 10
 monthly_prior_scale = 1
 quarterly_prior_scale = 1
-mcmc_samples = 100
-type_ = ['amount', 'price', 'profit']
+mcmc_samples = 0
+type_ = ['amount', 'price', 'profit', 'sum_price']
 
 # 将sale_sm按sm_sort进行分组切分，将得到的每组df赋给一个list
 list_df = [df for _, df in sale_sm.groupby('sm_sort')]
@@ -193,24 +197,18 @@ list_forecast = []
 for tp in type_:
     list_forecast.append([prophet_model(df[:-periods][['busdate', tp]].rename(columns={'busdate': 'ds', tp: 'y'}), periods, seasonality_mode, holidays_prior_scale, seasonality_prior_scale, holiday, weekly, yearly, monthly, quarterly, weekly_fourier_order, yearly_fourier_order, monthly_fourier_order, quarterly_fourier_order, weekly_prior_scale, yearly_prior_scale, monthly_prior_scale, quarterly_prior_scale, mcmc_samples, type_=tp, sm_sort=df['sm_sort'].unique()[0]) for df in list_df])
 
-# 输出预测结果
-for i in range(len(sm_sort)):
-    for j in range(len(type_)-1):
-        list_forecast[j][i][-periods:].to_excel(r"D:\Work info\SCU\MathModeling\2023\data\processed\question_5\results\{}\{}\forecast.xlsx".format(sm_sort[i], type_[j]), index=False)
-
-
-# df1 = list_forecast[j][i-1][['ds', 'yhat']][-periods:]
-# df2 = list_df[i-1][['sm_sort', 'busdate', 'amount', 'price', 'profit']][-periods:]
-
-# price = list_forecast[1][0]['yhat'][-periods:] / list_forecast[0][0]['yhat'][-periods:]
-# cost_price = list_forecast[2][0]['yhat'][-periods:]
-# profit = (price - cost_price) / price
-
-# price = []
-# cost_price = []
-# profit = []
-
+# # 对预测期的销量、售价、毛利率、销售额的结果中小于min_num的值置为min_num；并且用销量*售价得到销售额，而不是用预测的销售额，为了使逻辑统一。
 # for i in range(len(sm_sort)):
-#     price.append(list_forecast[1][i]['yhat'][-periods:] / list_forecast[0][i]['yhat'][-periods:])
-#     cost_price.append(list_forecast[2][i]['yhat'][-periods:])
-#     profit.append((price[i] - cost_price[i]) / price[i] if )
+#     for j in range(len(type_)):
+#         list_forecast[j][i]['yhat'][-periods:] = list_forecast[j][i]['yhat'][-periods:].apply(lambda x: x if x >= min_num else min_num)
+#     list_forecast[-1][i]['yhat'][-periods:] = list_forecast[0][i]['yhat'][-periods:] * list_forecast[1][i]['yhat'][-periods:]
+
+# # 依次输出销量、售价、毛利率、销售额的预测结果，因为上一个双重循环有修改值，这里的双重循环不能与上一个双重循环合并
+# for i in range(len(sm_sort)):
+#     for j in range(len(type_)):
+#         list_forecast[j][i][-periods:].to_excel(r"D:\Work info\SCU\MathModeling\2023\data\processed\question_5\results\{}\{}\forecast.xlsx".format(sm_sort[i], type_[j]), index=False)
+
+for i in range(len(sm_sort)):
+    for j in range(len(type_)):
+        list_forecast[j][i]['yhat'][-periods:] = list_forecast[j][i]['yhat'][-periods:].apply(lambda x: x if x >= min_num else min_num)
+        list_forecast[j][i][-periods:].to_excel(r"D:\Work info\SCU\MathModeling\2023\data\processed\question_5\results\{}\{}\forecast.xlsx".format(sm_sort[i], type_[j]), index=False)
