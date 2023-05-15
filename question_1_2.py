@@ -43,6 +43,7 @@ print(f'\naccount\n\nshape: {account.shape}\n\ndtypes:\n{account.dtypes}\n\nisnu
       f'\n\nisnull-rows:\n{sum(account.isnull().T.any())}\n\nnumber of commodities:\n{len(acct_grup)}\n')
 print(f"account['sum_disc'].mean(): {account['sum_disc'].mean()}")
 print(f"account['sum_price'].mean(): {account['sum_price'].mean()}", '\n')
+account.drop(columns=['sum_disc'], inplace=True)
 
 commodity = pd.read_csv(r"D:\Work info\SCU\MathModeling\2023\data\ZNEW_DESENS\ZNEW_DESENS\sampledata\commodity.csv")
 commodity[['class', 'bg_sort', 'md_sort', 'sm_sort', 'code']] = commodity[['class', 'bg_sort', 'md_sort', 'sm_sort', 'code']].astype('str')
