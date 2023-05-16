@@ -135,7 +135,7 @@ fig.clear()
 
 
 # question5
-seasonality_mode = 'additive'
+seasonality_mode = tuple(['additive', 'multiplicative'])
 holidays_prior_scale=10
 seasonality_prior_scale=10
 holiday = True
@@ -195,7 +195,12 @@ def prophet_model(df, periods, seasonality_mode, holidays_prior_scale, seasonali
 # 用prophet模型对每组df进行预测
 list_forecast = []
 for tp in type_:
-    list_forecast.append([prophet_model(df[:-periods][['busdate', tp]].rename(columns={'busdate': 'ds', tp: 'y'}), periods, seasonality_mode, holidays_prior_scale, seasonality_prior_scale, holiday, weekly, yearly, monthly, quarterly, weekly_fourier_order, yearly_fourier_order, monthly_fourier_order, quarterly_fourier_order, weekly_prior_scale, yearly_prior_scale, monthly_prior_scale, quarterly_prior_scale, mcmc_samples, type_=tp, sm_sort=df['sm_sort'].unique()[0]) for df in list_df])
+    # 如果tp是'amount', 'price', 'profit'之一
+    if tp in ['amount', 'price', 'profit']:
+        list_forecast.append([prophet_model(df[:-periods][['busdate', tp]].rename(columns={'busdate': 'ds', tp: 'y'}), periods, seasonality_mode[0], holidays_prior_scale, seasonality_prior_scale, holiday, weekly, yearly, monthly, quarterly, weekly_fourier_order, yearly_fourier_order, monthly_fourier_order, quarterly_fourier_order, weekly_prior_scale, yearly_prior_scale, monthly_prior_scale, quarterly_prior_scale, mcmc_samples, type_=tp, sm_sort=df['sm_sort'].unique()[0]) for df in list_df])
+    # 如果tp是'sum_price'
+    else:
+        list_forecast.append([prophet_model(df[:-periods][['busdate', tp]].rename(columns={'busdate': 'ds', tp: 'y'}), periods, seasonality_mode[1], holidays_prior_scale, seasonality_prior_scale, holiday, weekly, yearly, monthly, quarterly, weekly_fourier_order, yearly_fourier_order, monthly_fourier_order, quarterly_fourier_order, weekly_prior_scale, yearly_prior_scale, monthly_prior_scale, quarterly_prior_scale, mcmc_samples, type_=tp, sm_sort=df['sm_sort'].unique()[0]) for df in list_df])
 
 # # 对预测期的销量、售价、毛利率、销售额的结果中小于min_num的值置为min_num；并且用销量*售价得到销售额，而不是用预测的销售额，为了使逻辑统一。
 # for i in range(len(sm_sort)):
@@ -210,5 +215,8 @@ for tp in type_:
 
 for i in range(len(sm_sort)):
     for j in range(len(type_)):
-        list_forecast[j][i]['yhat'][-periods:] = list_forecast[j][i]['yhat'][-periods:].apply(lambda x: x if x >= min_num else min_num)
+        if j == 1:
+            list_forecast[j][i]['yhat'][-periods:] = list_forecast[j][i]['yhat'][-periods:].apply(lambda x: x if x >= min_num else min_num)
+        else:
+            list_forecast[j][i]['yhat'][-periods:] = list_forecast[j][i]['yhat'][-periods:].apply(lambda x: x if x > min_num else list_forecast[j][i]['yhat'][-2*periods:].mean())
         list_forecast[j][i][-periods:].to_excel(r"D:\Work info\SCU\MathModeling\2023\data\processed\question_5\results\{}\{}\forecast.xlsx".format(sm_sort[i], type_[j]), index=False)
