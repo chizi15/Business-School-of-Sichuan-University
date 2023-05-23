@@ -1,5 +1,7 @@
 import numpy as np
 from scipy.stats import shapiro, normaltest, anderson
+# pip install --upgrade --force-reinstall scipy
+
 
 # 生成 100 个随机数
 data = np.random.normal(0, 1, 100)
