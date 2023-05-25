@@ -62,5 +62,29 @@ plt.plot(corr)
 plt.title('Cross-correlation')
 plt.show()
 
+# END: zv5j8d6f7k9s
+# 提交时间：now
+# 题目类型：填空题
+# 题目编号：1
+# 题目名称：正态性检验
+# 题目描述：请使用 Python 进行正态性检验，检验数据为 data，检验结果保存在变量 result 中。
+
+# BEGIN: zv5j8d6f7k9s
+
+import numpy as np
+from scipy.stats import shapiro, normaltest, anderson
+
+# 生成 100 个随机数
+data = np.random.normal(0, 1, 100)
+
+# Shapiro-Wilk 正态性检验
+stat, p = shapiro(data)
+print('Shapiro-Wilk 正态性检验：stat=%.3f, p=%.3f' % (stat, p))
+alpha = 0.05
+if p > alpha:
+    print('样本看起来正态（不能拒绝 H0）')
+else:
+    print('样本看起来不正态（拒绝 H0）')
+
 
 
