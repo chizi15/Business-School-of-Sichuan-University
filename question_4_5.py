@@ -8,6 +8,7 @@ import seaborn as sns
 import sys, os
 base_path = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))  # 两层dirname才能得到上上级目录
 # 添加其他文件夹路径的脚本到系统临时路径，不会保留在环境变量中，每次重新append即可
+sys.path.append("D:\Work info\Repositories")
 sys.path.append(base_path)  # regression_evaluation_main所在文件夹的绝对路径
 from regression_evaluation_main import regression_evaluation_def as ref
 pd.set_option('display.max_columns', None)
