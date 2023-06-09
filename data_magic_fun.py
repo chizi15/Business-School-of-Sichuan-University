@@ -1,4 +1,3 @@
-<<<<<<< HEAD
 # coding: utf-8
 import pandas as pd
 import numpy as np
@@ -844,4 +843,3 @@ if __name__ == '__main__':
     sample_choose(desens_path, output_path)
 
     print('******** 数据处理完成 ********')
->>>>>>> 8ecf591ca3dc8a52638efe306532dcaf28420207
