@@ -21,9 +21,21 @@ periods = 7 # 预测步数
 interval_width = 0.95 # prophet的置信区间宽度
 min_num = 0.0 # 设置预测销量、售价、毛利率、销售额的最小取值
 
+
 # 读取数据
 df = pd.read_csv(r"D:\Work info\SCU\MathModeling\2023\data\ZNEW_DESENS\ZNEW_DESENS\sampledata\account.csv")
 df.sort_values(by=['busdate'], inplace=True)
+
+
+# 输出这三条时序图中，非空数据的起止日期，用循环实现
+for col in ['amount', 'sum_cost', 'sum_price']:
+    print(f'{col}非空数据的起止日期为：{df[df[col].notnull()]["busdate"].min()}到{df[df[col].notnull()]["busdate"].max()}', '\n')
+
+# 断言df中数值型字段的起止日期相同
+assert (df[df['amount'].notnull()]["busdate"].min() == df[df['sum_cost'].notnull()]["busdate"].min() == df[df['sum_price'].notnull()]["busdate"].min()), "三个字段非空数据的开始日期不相同"
+assert (df[df['amount'].notnull()]["busdate"].max() == df[df['sum_cost'].notnull()]["busdate"].max() == df[df['sum_price'].notnull()]["busdate"].max()), "三个字段非空数据的结束日期不相同"
+
+
 df_students = df[df['busdate'].isin(df['busdate'].unique()[:-periods])]
 df_students.drop(columns=['sum_disc'], inplace=True)
 df_students.to_excel(r"D:\Work info\SCU\MathModeling\2023\data\processed\question_4\students_use_data\df_students.xlsx")

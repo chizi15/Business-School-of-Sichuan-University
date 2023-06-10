@@ -34,12 +34,14 @@ print('Imported packages successfully.', '\n')
 periods = 7 # 预测步数
 extend_power = 1/5 # 数据扩增的幂次
 interval_width = 0.95 # prophet的置信区间宽度
+mcmc_samples = 100 # prophet的mcmc采样次数
+
 
 # read and summerize data
 running = pd.read_csv(r"D:\Work info\SCU\MathModeling\2023\data\ZNEW_DESENS\ZNEW_DESENS\sampledata\running.csv")
 print(f"running['type']的取值: {running['type'].unique()}", '\n')
 print(f"'退货'的最大取值: {running[running['type'] == '退货']['amount'].max()}", '\n', "退货的最大值为负数，说明退货的amount是负数, 则'退货'记录可与'单品销售'记录相加，得到每日实际销量", '\n')
-run_apple = running[running['class'] == '水果课']
+run_apple = running[running['class'] == '水果课']  # 水果课中只有苹果
 run_apple['busdate'] = pd.to_datetime(run_apple['selldate'], infer_datetime_format=True)
 run_apple.sort_values(by=['busdate', 'selltime'], inplace=True)
 run_apple = run_apple.groupby(['busdate', 'code'])[['amount', 'sum_sell', 'sum_disc']].sum().reset_index()
@@ -56,10 +58,30 @@ account_seg = account_seg.groupby(['busdate'])[['sum_cost']].mean().reset_index(
 account_apple = pd.merge(account_apple, account_seg, on='busdate', how='left')
 account_apple.to_excel(r"D:\Work info\SCU\MathModeling\2023\data\processed\question_3\results\account_apple_processed.xlsx", index=False, sheet_name='流水表经过缺货填补，并按日聚合，再和账表合并sum_cost后的苹果日销售数据')
 
+
+# 对account_apple中数值型变量的列：amount，sum_cost和sum_price画时序图
+account_apple_num = account_apple.select_dtypes(include=np.number)
+for col in account_apple_num:
+    sns.lineplot(x='busdate', y=col, data=account_apple)
+    plt.xticks(rotation=45)
+    plt.xlabel('busdate')
+    plt.ylabel(col)
+    plt.title('Time Series Graph')
+    plt.show()
+
+# 输出这三条时序图中，非空数据的起止日期，用循环实现
+for col in account_apple_num:
+    print(f'{col}非空数据的起止日期为：{account_apple[account_apple[col].notnull()]["busdate"].min()}到{account_apple[account_apple[col].notnull()]["busdate"].max()}', '\n')
+
+# 断言account_apple中数值型字段的起止日期相同
+assert (account_apple[account_apple['amount'].notnull()]["busdate"].min() == account_apple[account_apple['sum_cost'].notnull()]["busdate"].min() == account_apple[account_apple['sum_price'].notnull()]["busdate"].min()), "三个字段非空数据的开始日期不相同"
+assert (account_apple[account_apple['amount'].notnull()]["busdate"].max() == account_apple[account_apple['sum_cost'].notnull()]["busdate"].max() == account_apple[account_apple['sum_price'].notnull()]["busdate"].max()), "三个字段非空数据的结束日期不相同"
+
+
 account_apple_train = account_apple[:-periods]
 # 用prophet获取训练集上的星期效应系数、节日效应系数和年季节性效应系数
 apple_prophet_amount = account_apple_train[['busdate', 'amount']].rename(columns={'busdate': 'ds', 'amount': 'y'})
-m_amount = Prophet(yearly_seasonality=True, weekly_seasonality=True, seasonality_mode='multiplicative', holidays_prior_scale=10, seasonality_prior_scale=10, mcmc_samples=0, interval_width=interval_width)
+m_amount = Prophet(yearly_seasonality=True, weekly_seasonality=True, seasonality_mode='multiplicative', holidays_prior_scale=10, seasonality_prior_scale=10, mcmc_samples=mcmc_samples, interval_width=interval_width)
 m_amount.add_country_holidays(country_name='CN')
 m_amount.fit(apple_prophet_amount)
 future_amount = m_amount.make_future_dataframe(periods=periods)
@@ -149,6 +171,13 @@ print('"amt_no_effect" Shapiro-Wilk test p-value:', p, '\n')
 account_apple_train['price_daily_avg'] = account_apple_train['sum_price'] / account_apple_train['amount']
 account_apple_train['cost_daily_avg'] = account_apple_train['sum_cost'] / account_apple_train['amount']
 account_apple_train['profit_daily'] = (account_apple_train['price_daily_avg'] - account_apple_train['cost_daily_avg']) / account_apple_train['price_daily_avg']
+
+# 画account_apple_train['profit_daily']的概率密度函数
+fig, ax = plt.subplots(1, 1)
+sns.distplot(account_apple_train['profit_daily'].values, ax=ax)
+plt.title('苹果日均利润的概率密度函数')
+plt.show()
+
 profit_avg = (account_apple_train['profit_daily'].mean() + np.percentile(account_apple_train['profit_daily'], 50)) / 2
 
 f = fitter.Fitter(apple_train_amt_ext, distributions='gamma')
@@ -156,7 +185,10 @@ f.fit()
 q_steady = stats.gamma.ppf(profit_avg, *f.fitted_param['gamma'])
 print(f'拟合分布的最优参数是: \n {f.fitted_param["gamma"]}', '\n')
 print(f'q_steady = {q_steady}', '\n')
-
+# if q_steady 为空，取销量均值
+if np.isnan(q_steady):
+    q_steady = np.mean(account_apple_train['amt_no_effect'])
+    print(f'q_steady = {q_steady}', '\n')
 
 # 观察apple_train_amt_ext的分布情况
 f = fitter.Fitter(apple_train_amt_ext, distributions=['cauchy', 'chi2', 'expon', 'exponpow', 'gamma', 'lognorm', 'norm', 'powerlaw', 'irayleigh', 'uniform'], timeout=10)
@@ -251,9 +283,9 @@ plt.savefig(r"D:\Work info\SCU\MathModeling\2023\data\processed\question_3\resul
 plt.show()
 
 
-# question_2
+# question_3
 apple_prophet_price = account_apple_train[['busdate', 'sum_price']].rename(columns={'busdate': 'ds', 'sum_price': 'y'})
-m_price = Prophet(seasonality_mode='multiplicative', holidays_prior_scale=10, seasonality_prior_scale=10, mcmc_samples=0, interval_width=interval_width)
+m_price = Prophet(seasonality_mode='multiplicative', holidays_prior_scale=10, seasonality_prior_scale=10, mcmc_samples=mcmc_samples, interval_width=interval_width)
 m_price.add_country_holidays(country_name='CN')
 m_price.add_seasonality(name='weekly', period=7, fourier_order=10, prior_scale=10)
 m_price.add_seasonality(name='yearly', period=365, fourier_order=3, prior_scale=10)
@@ -271,7 +303,15 @@ fig2.savefig(r"D:\Work info\SCU\MathModeling\2023\data\processed\question_3\resu
 
 account_apple_train['cost'] = account_apple_train['sum_cost'] / account_apple_train['amount']
 apple_prophet_cost = account_apple_train[['busdate', 'cost']].rename(columns={'busdate': 'ds', 'cost': 'y'})
-m_cost = Prophet(yearly_seasonality=True, weekly_seasonality=True, seasonality_mode='additive', holidays_prior_scale=10, seasonality_prior_scale=10, mcmc_samples=0, interval_width=interval_width)
+# # 用中位数为均值，标准差为范围，识别并替换apple_prophet_cost中异常值
+# apple_prophet_cost.loc[apple_prophet_cost['y'] > apple_prophet_cost['y'].median() + 3 * apple_prophet_cost['y'].std(), 'y'] = apple_prophet_cost['y'].median() + 3 * apple_prophet_cost['y'].std()
+# apple_prophet_cost.loc[apple_prophet_cost['y'] < apple_prophet_cost['y'].median() - 3 * apple_prophet_cost['y'].std(), 'y'] = apple_prophet_cost['y'].median() - 3 * apple_prophet_cost['y'].std()
+# 用中位数为均值，分位距为范围，识别并替换apple_prophet_cost中异常值
+apple_prophet_cost.loc[apple_prophet_cost['y'] > apple_prophet_cost['y'].quantile(0.75) + 1.5 * (apple_prophet_cost['y'].quantile(0.75) - apple_prophet_cost['y'].quantile(0.25)), 'y'] = apple_prophet_cost['y'].quantile(0.75) + 1.5 * (apple_prophet_cost['y'].quantile(0.75) - apple_prophet_cost['y'].quantile(0.25))
+apple_prophet_cost.loc[apple_prophet_cost['y'] < apple_prophet_cost['y'].quantile(0.25) - 1.5 * (apple_prophet_cost['y'].quantile(0.75) - apple_prophet_cost['y'].quantile(0.25)), 'y'] = apple_prophet_cost['y'].quantile(0.25) - 1.5 * (apple_prophet_cost['y'].quantile(0.75) - apple_prophet_cost['y'].quantile(0.25))
+
+# 对成本金额进行预测建模，用加法模型波动更小
+m_cost = Prophet(yearly_seasonality=True, weekly_seasonality=True, seasonality_mode='additive', holidays_prior_scale=10, seasonality_prior_scale=10, mcmc_samples=mcmc_samples, interval_width=interval_width)
 m_cost.add_country_holidays(country_name='CN')
 m_cost.fit(apple_prophet_cost)
 future_cost = m_cost.make_future_dataframe(periods=periods)
@@ -296,8 +336,8 @@ q_steady_star = []
 for i in range(len(forecast['profit'])):
     q = stats.gamma.ppf(forecast['profit'].values[i], *f_star.fitted_param['gamma'])
     if math.isnan(q):
-        print(math.isnan(q))
-        q_steady_star.append((np.mean(account_apple_train['amt_no_effect'].values[-periods:]) + np.percentile(account_apple_train['amt_no_effect'].values[-periods:], 50)) / 2)
+        print(f"math.isnan(q): {math.isnan(q)}")
+        q_steady_star.append((forecast_amount['yhat'][-periods:].mean() + np.percentile(forecast_amount['yhat'][-periods:], 50)) / 2)
     else:
         q_steady_star.append(stats.gamma.ppf(forecast['profit'].values[i], *f_star.fitted_param['gamma']))
 q_steady_star = np.array(q_steady_star)
@@ -305,13 +345,14 @@ print(f'q_steady_star = {q_steady_star}', '\n')
 
 all_set['total_effect'] = all_set[['holiday_effect', 'weekly_effect_avg', 'yearly_effect_avg']].sum(axis=1)
 q_star_new = q_steady_star * (1 + all_set['total_effect'][-periods:])
+print(f'q_star_new = \n {q_star_new}', '\n')
 forecast['未加载时间效应的第二次报童订货量'] = q_steady_star
 forecast['q_star_new'] = q_star_new
 forecast.rename(columns={'ds': '销售日期', 'yhat': '预测金额', 'price': '预测单价', 'cost': '预测成本', 'profit': '预测毛利率', 'q_star_new': '新订货量'}, inplace=True)
 # 将forecast中预测毛利率小于0的元素替换为其他预测毛利率的均值
 forecast['预测毛利率'] = forecast['预测毛利率'].apply(lambda x: profit_mean if x < 0 else x)
 forecast['预测成本'] = forecast['预测单价'] - forecast['预测毛利率'] * forecast['预测单价']
-forecast.to_excel(r"D:\Work info\SCU\MathModeling\2023\data\processed\question_3\results\question_5_final_apple_forecast.xlsx", index=False, encoding='utf-8-sig', sheet_name='问题5最终结果：苹果在预测期每日的预测销售额、预测单价、预测成本、预测毛利率、未加载时间效应的第二次报童订货量和新订货量')
+forecast.to_excel(r"D:\Work info\SCU\MathModeling\2023\data\processed\question_3\results\question_3_final_apple_forecast.xlsx", index=False, encoding='utf-8-sig', sheet_name='问题3最终结果：苹果在预测期每日的预测销售额、预测单价、预测成本、预测毛利率、未加载时间效应的第二次报童订货量和新订货量')
 
 # 评估指标
 res_new = ref.regression_evaluation_single(y_true=apple_all['实际销量'][-periods:].values, y_pred=forecast['新订货量'][-periods:].values)

@@ -50,7 +50,11 @@ def clean_with_bizdata(old_path, new_path, new_storage_path, filename, filetp='c
     print('按日期过滤后, 新文件记录数:', new_df.shape)
     
     new_df = pd.concat([old_df, new_df], ignore_index=True)
-    
+    if filename != 'running':
+        new_df.drop_duplicates(subset=['code', 'busdate', 'organ'], keep='last', inplace=True)
+    else:
+        new_df.drop_duplicates(subset=['code', 'selldate', 'organ'], keep='last', inplace=True)
+
     new_df.to_csv(store_file_path, index=False, encoding='utf-8-sig')
     
     print('合并后文件记录数:', new_df.shape)
@@ -97,6 +101,7 @@ def clean_with_bizdata(old_path, new_path, new_storage_path, filename, filetp='c
 #     print('按日期过滤后, 新文件记录数:', new_df.shape)
     
 #     new_df = pd.concat([old_df, new_df], ignore_index=True)
+    # new_df.drop_duplicates(subset=['code', 'busdate', 'organ'], keep='last', inplace=True)
     
 #     new_df.to_csv(store_file_path, index=False, encoding='utf-8-sig')
     
@@ -239,7 +244,6 @@ def cut_desens_bizdata(storage_path, desens_path, filename, filetp='csv', ratio=
                         dtype={'code': str},
                         names=['organ', 'class', 'code', 'name', 'busdate', 'order_pred', 'order_real', 'loss_real', 'loss_theory'], header=0
                                 )
-        df
     print('df shape:', df.shape)
     
     if filename == 'account':

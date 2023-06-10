@@ -8,38 +8,40 @@ pd.set_option('display.max_rows', 6)
 
 input_path = r'D:\Work info\WestUnion\data\processed\HLJ\脱敏及筛选后样本数据\output'
 output_path = r"D:\Work info\SCU\MathModeling\2023\data\output"
+output_path_self_use = r"D:\Work info\SCU\MathModeling\2023\data\ZNEW_DESENS\ZNEW_DESENS\sampledata"
+
 
 commodity = pd.read_csv(f'{input_path}/commodity.csv')
-
-account = pd.read_csv(f'{input_path}/account.csv')
-account.drop(columns=['amount', 'sum_price', 'sum_disc'], inplace=True)
-account['busdate'] = pd.to_datetime(account['busdate'])
-account.sort_values(by=['busdate', 'code'], inplace=True)
-
-running = pd.read_csv(f'{input_path}/running.csv')
-running.drop(columns='sum_sell', inplace=True)
-# 将selldate转换为日期格式，并只保留日期
-running['selldate'] = pd.to_datetime(running['selldate'])
-running.sort_values(by=['selldate', 'code'], inplace=True)
+commodity.to_csv(f'{output_path_self_use}/commodity.csv', index=False)
+commodity.to_excel(f'{output_path}/commodity.xlsx', index=False)
 
 order = pd.read_csv(f'{input_path}/订货数据.csv')
 order.drop(columns=['order_pred', 'loss_theory'], inplace=True)
 order['busdate'] = pd.to_datetime(order['busdate'])
 order.sort_values(by=['busdate', 'code'], inplace=True)
 
-# 按order的最小日期，筛选account和running
+account = pd.read_csv(f'{input_path}/account.csv')
+account['busdate'] = pd.to_datetime(account['busdate'])
+account.sort_values(by=['busdate', 'code'], inplace=True)
 account = account[account['busdate'] >= order['busdate'].min()]
-running = running[running['selldate'] >= order['busdate'].min()]
+account.to_csv(f'{output_path_self_use}/account.csv', index=False)
+account.drop(columns=['amount', 'sum_price', 'sum_disc'], inplace=True)
 
+running = pd.read_csv(f'{input_path}/running.csv')
+running['selldate'] = pd.to_datetime(running['selldate'])
+running.sort_values(by=['selldate', 'code'], inplace=True)
+running = running[running['selldate'] >= order['busdate'].min()]
+running.to_csv(f'{output_path_self_use}/running.csv', index=False)
+running.drop(columns='sum_sell', inplace=True)
+# running.to_csv(f'{output_path}/running.csv', index=False, encoding='utf-8-sig')  # encoding='utf-8-sig'，解决excel打开，中文是乱码的问题
+running.to_excel(f'{output_path}/running.xlsx', index=False)
 
 # 将account和order按['organ', 'class', 'code', 'busdate']合并
 account_order = pd.merge(account, order, on=['organ', 'class', 'code', 'busdate'], how='left')
-
-commodity.to_excel(f'{output_path}/commodity.xlsx', index=False)
-running.to_csv(f'{output_path}/running.csv', index=False)
 account_order.to_excel(f'{output_path}/account_order.xlsx', index=False)
 
 
+# 统计空值和0值的样本数占比
 print(f"实际订货量为0的样本数占比：{account_order[account_order['order_real'] == 0].shape[0] / account_order.shape[0]}")
 print(f"实际订货量为空值的样本数占比：{account_order[account_order['order_real'].isnull()].shape[0] / account_order.shape[0]}")
 print(f"实际订货量为0以及空值的样本数占比：{account_order[(account_order['order_real'] == 0) | (account_order['order_real'].isnull())].shape[0] / account_order.shape[0]}", '\n')
@@ -94,20 +96,20 @@ print(running.describe().T)
 print(account_order.describe().T)
 
 
-# 查看running，account_order中，数值型字段的分布情况，并画图显示
-# running
-running_num = running.select_dtypes(include=['int64', 'float64'])
-for i in running_num.columns:
-    plt.figure(figsize=(10, 5))
-    sns.set_style("whitegrid")
-    sns.boxplot(x=running_num[i], color='blue')
-    sns.despine(left=True)
-    plt.show()
-    plt.figure(figsize=(10, 5))
-    sns.set_style("white")
-    sns.kdeplot(running_num[i], shade=True, color='blue')
-    sns.despine(left=True)
-    plt.show()
+# # 查看running，account_order中，数值型字段的分布情况，并画图显示
+# # running
+# running_num = running.select_dtypes(include=['int64', 'float64'])
+# for i in running_num.columns:
+#     plt.figure(figsize=(10, 5))
+#     sns.set_style("whitegrid")
+#     sns.boxplot(x=running_num[i], color='blue')
+#     sns.despine(left=True)
+#     plt.show()
+#     plt.figure(figsize=(10, 5))
+#     sns.set_style("white")
+#     sns.kdeplot(running_num[i], shade=True, color='blue')
+#     sns.despine(left=True)
+#     plt.show()
 
 # account_order
 account_order_num = account_order.select_dtypes(include=['int64', 'float64'])

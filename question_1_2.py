@@ -33,6 +33,8 @@ print('Imported packages successfully.', '\n')
 periods = 7 # 预测步数
 extend_power = 1/5 # 数据扩增的幂次
 interval_width = 0.95 # prophet的置信区间宽度
+mcmc_samples = 100 # mcmc采样次数
+
 
 # read and summerize data
 account = pd.read_csv(r"D:\Work info\SCU\MathModeling\2023\data\ZNEW_DESENS\ZNEW_DESENS\sampledata\account.csv")
@@ -46,16 +48,19 @@ print(f"account['sum_disc'].mean(): {account['sum_disc'].mean()}")
 print(f"account['sum_price'].mean(): {account['sum_price'].mean()}", '\n')
 account.drop(columns=['sum_disc'], inplace=True)
 
+
 commodity = pd.read_csv(r"D:\Work info\SCU\MathModeling\2023\data\ZNEW_DESENS\ZNEW_DESENS\sampledata\commodity.csv")
 commodity[['class', 'bg_sort', 'md_sort', 'sm_sort', 'code']] = commodity[['class', 'bg_sort', 'md_sort', 'sm_sort', 'code']].astype('str')
 comodt_grup = commodity.groupby(['code'])
 print(f'\ncommodity\n\nshape: {commodity.shape}\n\ndtypes:\n{commodity.dtypes}\n\nisnull-columns:\n{commodity.isnull().any()}'
       f'\n\nisnull-rows:\n{sum(commodity.isnull().T.any())}\n\nnumber of commodities:\n{len(comodt_grup)}\n')
 
+
 # 将account和commodity按['class', 'code']合并
 account_commodity = pd.merge(account, commodity, on=['class', 'code'], how='left')
 print(f'\naccount_commodity\n\nshape: {account_commodity.shape}\n\ndtypes:\n{account_commodity.dtypes}\n\nisnull-columns:\n{account_commodity.isnull().any()}', '\n')
 # account_commodity.to_csv(r"D:\Work info\SCU\MathModeling\2023\data\processed\account_commodity.csv", index=False)
+
 
 # 将account_commodity按['organ', 'class', 'bg_sort', 'md_sort']进行聚合，得到一张对account_commodity中float类型字段取均值的新表，并且是单行索引
 account_commodity_mean = account_commodity.groupby(['organ', 'class', 'bg_sort', 'bg_sort_name', 'md_sort', 'md_sort_name', 'sm_sort', 'sm_sort_name', 'busdate'], as_index=False).mean()
@@ -71,6 +76,24 @@ sm_qielei = sm_qielei_all[:-periods]
 sm_qielei = sm_qielei[sm_qielei['sum_cost'] <= sm_qielei['sum_price']]
 sm_qielei.to_excel(r"D:\Work info\SCU\MathModeling\2023\data\processed\question_1_2\students_use_data\sm_qielei_train.xlsx", index=False, sheet_name='茄类在训练集上的样本')
 
+# 对sm_qielei_all中数值型变量的列：amount，sum_cost和sum_price画时序图
+sm_qielei_all_num = sm_qielei_all.select_dtypes(include=np.number)
+for col in sm_qielei_all_num:
+    sns.lineplot(x='busdate', y=col, data=sm_qielei_all)
+    plt.xticks(rotation=45)
+    plt.xlabel('busdate')
+    plt.ylabel(col)
+    plt.title('Time Series Graph')
+    plt.show()
+
+# 输出这三条时序图中，非空数据的起止日期，用循环实现
+for col in sm_qielei_all_num:
+    print(f'{col}非空数据的起止日期为：{sm_qielei_all[sm_qielei_all[col].notnull()]["busdate"].min()}到{sm_qielei_all[sm_qielei_all[col].notnull()]["busdate"].max()}', '\n')
+
+# 断言这三个字段非空数据的起止日期相同
+assert (sm_qielei_all[sm_qielei_all['amount'].notnull()]["busdate"].min() == sm_qielei_all[sm_qielei_all['sum_cost'].notnull()]["busdate"].min() == sm_qielei_all[sm_qielei_all['sum_price'].notnull()]["busdate"].min()), "三个字段非空数据的开始日期不相同"
+assert (sm_qielei_all[sm_qielei_all['amount'].notnull()]["busdate"].max() == sm_qielei_all[sm_qielei_all['sum_cost'].notnull()]["busdate"].max() == sm_qielei_all[sm_qielei_all['sum_price'].notnull()]["busdate"].max()), "三个字段非空数据的结束日期不相同"
+
 # 以'busdate'为横坐标，'amount'为纵坐标，画出时序图。用sns来画图，使图更美观，使横坐标的日期不会重叠，并且横坐标以每月为时间间隔显示
 sns.lineplot(x='busdate', y='amount', data=sm_qielei)
 plt.xticks(rotation=45)
@@ -81,7 +104,7 @@ plt.show()
 
 # 用prophet获取训练集上的星期效应系数、节日效应系数和年季节性效应系数
 qielei_prophet_amount = sm_qielei[['busdate', 'amount']].rename(columns={'busdate': 'ds', 'amount': 'y'})
-m_amount = Prophet(yearly_seasonality=True, weekly_seasonality=True, seasonality_mode='multiplicative', holidays_prior_scale=10, seasonality_prior_scale=10, mcmc_samples=0, interval_width=interval_width)
+m_amount = Prophet(yearly_seasonality=True, weekly_seasonality=True, seasonality_mode='multiplicative', holidays_prior_scale=10, seasonality_prior_scale=10, mcmc_samples=mcmc_samples, interval_width=interval_width)
 m_amount.add_country_holidays(country_name='CN')
 m_amount.fit(qielei_prophet_amount)
 future_amount = m_amount.make_future_dataframe(periods=periods)
@@ -149,7 +172,7 @@ sns.distplot(sm_qielei['amt_no_effect'].values, ax=ax, label='original')
 ax.legend()
 plt.title('数据扩增前后，历史销量的概率密度函数对比图')
 plt.show()
-fig.savefig(r"D:\Work info\SCU\MathModeling\2023\data\processed\question_1_2\results\数据扩增前后，历史销量的概率密度函数对比图.svg", dpi=300, bbox_inches='tight')
+fig.savefig(r"D:\Work info\SCU\MathModeling\2023\data\processed\question_1_2\\results\\数据扩增前后，历史销量的概率密度函数对比图.svg", dpi=300, bbox_inches='tight')
 
 # 给出sm_qielei_amt_ext和sm_qielei['amt_no_effect'].values的描述性统计
 sm_qielei_amt_ext_describe = pd.Series(sm_qielei_amt_ext, name='sm_qielei_amt_ext_describe').describe()
@@ -276,7 +299,7 @@ plt.show()
 
 # question_2
 qielei_prophet_price = sm_qielei[['busdate', 'sum_price']].rename(columns={'busdate': 'ds', 'sum_price': 'y'})
-m_price = Prophet(seasonality_mode='multiplicative', holidays_prior_scale=10, seasonality_prior_scale=10, mcmc_samples=0, interval_width=interval_width)
+m_price = Prophet(seasonality_mode='multiplicative', holidays_prior_scale=10, seasonality_prior_scale=10, mcmc_samples=mcmc_samples, interval_width=interval_width)
 m_price.add_country_holidays(country_name='CN')
 m_price.add_seasonality(name='weekly', period=7, fourier_order=10, prior_scale=10)
 m_price.add_seasonality(name='yearly', period=365, fourier_order=3, prior_scale=10)
@@ -292,7 +315,7 @@ fig2.savefig(r"D:\Work info\SCU\MathModeling\2023\data\processed\question_1_2\re
 
 sm_qielei['cost'] = sm_qielei['sum_cost'] / sm_qielei['amount']
 qielei_prophet_cost = sm_qielei[['busdate', 'cost']].rename(columns={'busdate': 'ds', 'cost': 'y'})
-m_cost = Prophet(yearly_seasonality=True, weekly_seasonality=True, seasonality_mode='additive', holidays_prior_scale=10, seasonality_prior_scale=10, mcmc_samples=0, interval_width=interval_width)
+m_cost = Prophet(yearly_seasonality=True, weekly_seasonality=True, seasonality_mode='multiplicative', holidays_prior_scale=10, seasonality_prior_scale=10, mcmc_samples=mcmc_samples, interval_width=interval_width)
 m_cost.add_country_holidays(country_name='CN')
 m_cost.fit(qielei_prophet_cost)
 future_cost = m_cost.make_future_dataframe(periods=periods)
@@ -321,6 +344,7 @@ print(f'q_steady_star = {q_steady_star}', '\n')
 
 all_set['total_effect'] = all_set[['holiday_effect', 'weekly_effect_avg', 'yearly_effect_avg']].sum(axis=1)
 q_star_new = q_steady_star * (1 + all_set['total_effect'][-periods:])
+print(f'q_star_new = {q_star_new}', '\n')
 forecast['未加载时间效应的第二次报童订货量'] = q_steady_star
 forecast['q_star_new'] = q_star_new
 forecast.rename(columns={'ds': '销售日期', 'yhat': '预测金额', 'price': '预测单价', 'cost': '预测成本', 'profit': '预测毛利率', 'q_star_new': '新订货量'}, inplace=True)
