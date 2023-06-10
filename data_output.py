@@ -25,14 +25,15 @@ account['busdate'] = pd.to_datetime(account['busdate'])
 account.sort_values(by=['busdate', 'code'], inplace=True)
 account = account[account['busdate'] >= order['busdate'].min()]
 account.to_csv(f'{output_path_self_use}/account.csv', index=False)
-account.drop(columns=['amount', 'sum_price', 'sum_disc'], inplace=True)
+account['unit_cost'] = account['sum_cost'] / account['amount']
+account.drop(columns=['amount', 'sum_price', 'sum_disc', 'sum_cost'], inplace=True)
 
 running = pd.read_csv(f'{input_path}/running.csv')
 running['selldate'] = pd.to_datetime(running['selldate'])
 running.sort_values(by=['selldate', 'code'], inplace=True)
 running = running[running['selldate'] >= order['busdate'].min()]
 running.to_csv(f'{output_path_self_use}/running.csv', index=False)
-running.drop(columns='sum_sell', inplace=True)
+running.drop(columns=['sum_disc', 'sum_sell'], inplace=True)
 # running.to_csv(f'{output_path}/running.csv', index=False, encoding='utf-8-sig')  # encoding='utf-8-sig'，解决excel打开，中文是乱码的问题
 running.to_excel(f'{output_path}/running.xlsx', index=False)
 
