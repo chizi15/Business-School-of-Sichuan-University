@@ -12,34 +12,63 @@ output_path_self_use = r"D:\Work info\SCU\MathModeling\2023\data\ZNEW_DESENS\ZNE
 
 
 commodity = pd.read_csv(f'{input_path}/commodity.csv')
+commodity.dropna(subset=['name'], inplace=True)
+pd.set_option('display.max_rows', 20)
+# 查看commodity中name列和code列的不同取值，并按降序排序
+print(commodity['name'].value_counts().sort_values(ascending=False), '\n')
+print(commodity['code'].value_counts().sort_values(ascending=False), '\n')
+# 将commodity的name列中，带有“冷”或“冻”的行筛选出，并删除这些行
+commodity = commodity[~commodity['name'].str.contains('冻')]
+print(f"commodity.isnull().sum():\n{commodity.isnull().sum()}", '\n')
+
 commodity.to_csv(f'{output_path_self_use}/commodity.csv', index=False)
 commodity.to_excel(f'{output_path}/commodity.xlsx', index=False)
+
 
 order = pd.read_csv(f'{input_path}/订货数据.csv')
 order.drop(columns=['order_pred', 'loss_theory'], inplace=True)
 order['busdate'] = pd.to_datetime(order['busdate'])
 order.sort_values(by=['busdate', 'code'], inplace=True)
+order = order[~order['name'].str.contains('冻')]
+print(f"order.isnull().sum():\n{order.isnull().sum()}", '\n')
+
 
 account = pd.read_csv(f'{input_path}/account.csv')
 account['busdate'] = pd.to_datetime(account['busdate'])
 account.sort_values(by=['busdate', 'code'], inplace=True)
 account = account[account['busdate'] >= order['busdate'].min()]
+print(f"account.isnull().sum():\n{account.isnull().sum()}", '\n')
+# account.dropna(subset=['unit_cost'], inplace=True)
+
 account.to_csv(f'{output_path_self_use}/account.csv', index=False)
 account['unit_cost'] = account['sum_cost'] / account['amount']
 account.drop(columns=['amount', 'sum_price', 'sum_disc', 'sum_cost'], inplace=True)
+
 
 running = pd.read_csv(f'{input_path}/running.csv')
 running['selldate'] = pd.to_datetime(running['selldate'])
 running.sort_values(by=['selldate', 'code'], inplace=True)
 running = running[running['selldate'] >= order['busdate'].min()]
+print(f"running.isnull().sum():\n{running.isnull().sum()}", '\n')
+
 running.to_csv(f'{output_path_self_use}/running.csv', index=False)
 running.drop(columns=['sum_disc', 'sum_sell'], inplace=True)
+# 将selldate中datetime64[ns]类型的数据转换为datetime.date类型
+running['selldate'] = running['selldate'].apply(lambda x: x.date())
 # running.to_csv(f'{output_path}/running.csv', index=False, encoding='utf-8-sig')  # encoding='utf-8-sig'，解决excel打开，中文是乱码的问题
 running.to_excel(f'{output_path}/running.xlsx', index=False)
 
+
 # 将account和order按['organ', 'class', 'code', 'busdate']合并
 account_order = pd.merge(account, order, on=['organ', 'class', 'code', 'busdate'], how='left')
+account_order.drop(columns=['name'], inplace=True)
+account_order = pd.merge(account_order, commodity, on=['class', 'code'], how='left')
+account_order.dropna(subset=['name'], inplace=True)
+if account_order['name'].str.contains('冻').sum() != 0:
+    account_order = account_order[~account_order['name'].str.contains('冻')]
+print(f"account_order.isnull().sum():\n{account_order.isnull().sum()}", '\n')
 account_order.to_excel(f'{output_path}/account_order.xlsx', index=False)
+pd.set_option('display.max_rows', 6)
 
 
 # 统计空值和0值的样本数占比

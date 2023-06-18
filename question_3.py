@@ -11,7 +11,7 @@ import seaborn as sns
 import sys, os
 base_path = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))  # 两层dirname才能得到上上级目录
 # 添加其他文件夹路径的脚本到系统临时路径，不会保留在环境变量中，每次重新append即可
-sys.path.append("D:\Work info\Repositories")
+# sys.path.append("D:\Work info\Repositories")
 sys.path.append(base_path)  # regression_evaluation_main所在文件夹的绝对路径
 from regression_evaluation_main import regression_evaluation_def as ref
 pd.set_option('display.max_columns', None)
@@ -346,30 +346,30 @@ print(f'q_steady_star = {q_steady_star}', '\n')
 all_set['total_effect'] = all_set[['holiday_effect', 'weekly_effect_avg', 'yearly_effect_avg']].sum(axis=1)
 q_star_new = q_steady_star * (1 + all_set['total_effect'][-periods:])
 print(f'q_star_new = \n {q_star_new}', '\n')
-forecast['未加载时间效应的第二次报童订货量'] = q_steady_star
+forecast['加载毛利率时间效应的第二次报童订货量'] = q_steady_star
 forecast['q_star_new'] = q_star_new
-forecast.rename(columns={'ds': '销售日期', 'yhat': '预测金额', 'price': '预测单价', 'cost': '预测成本', 'profit': '预测毛利率', 'q_star_new': '新订货量'}, inplace=True)
+forecast.rename(columns={'ds': '销售日期', 'yhat': '预测金额', 'price': '预测单价', 'cost': '预测成本单价', 'profit': '预测毛利率', 'q_star_new': '加载销量时间效应的最终订货量'}, inplace=True)
 # 将forecast中预测毛利率小于0的元素替换为其他预测毛利率的均值
 forecast['预测毛利率'] = forecast['预测毛利率'].apply(lambda x: profit_mean if x < 0 else x)
-forecast['预测成本'] = forecast['预测单价'] - forecast['预测毛利率'] * forecast['预测单价']
-forecast.to_excel(r"D:\Work info\SCU\MathModeling\2023\data\processed\question_3\results\question_3_final_apple_forecast.xlsx", index=False, encoding='utf-8-sig', sheet_name='问题3最终结果：苹果在预测期每日的预测销售额、预测单价、预测成本、预测毛利率、未加载时间效应的第二次报童订货量和新订货量')
+forecast['预测成本单价'] = forecast['预测单价'] - forecast['预测毛利率'] * forecast['预测单价']
+forecast.to_excel(r"D:\Work info\SCU\MathModeling\2023\data\processed\question_3\results\question_3_final_apple_forecast.xlsx", index=False, encoding='utf-8-sig', sheet_name='问题3最终结果：苹果在预测期每日的预测销售额、预测单价、预测成本单价、预测毛利率、加载毛利率时间效应的第二次报童订货量和加载销量时间效应的最终订货量')
 
 # 评估指标
-res_new = ref.regression_evaluation_single(y_true=apple_all['实际销量'][-periods:].values, y_pred=forecast['新订货量'][-periods:].values)
-accu_sin_new = ref.accuracy_single(y_true=apple_all['实际销量'][-periods:].values, y_pred=forecast['新订货量'][-periods:].values)
+res_new = ref.regression_evaluation_single(y_true=apple_all['实际销量'][-periods:].values, y_pred=forecast['加载销量时间效应的最终订货量'][-periods:].values)
+accu_sin_new = ref.accuracy_single(y_true=apple_all['实际销量'][-periods:].values, y_pred=forecast['加载销量时间效应的最终订货量'][-periods:].values)
 metrics_values_new = [accu_sin_new] + list(res_new[:-2])
 metrics_new = pd.Series(data=metrics_values_new, index=metrics_names, name='新评估指标值')
-metrics_new.to_excel(r"D:\Work info\SCU\MathModeling\2023\data\processed\question_3\results\apple_metrics_new.xlsx", index=True, encoding='utf-8-sig', sheet_name='新订货量的评估指标值')
+metrics_new.to_excel(r"D:\Work info\SCU\MathModeling\2023\data\processed\question_3\results\apple_metrics_final.xlsx", index=True, encoding='utf-8-sig', sheet_name='加载销量时间效应的最终订货量的评估指标值')
 print(f'metrics_new: \n {metrics_new}', '\n')
 
 fig = plt.figure(figsize=(12, 6))
 ax = fig.add_subplot(111)
 ax.plot(apple_all['销售日期'][-periods:], apple_all['实际销量'][-periods:], label='实际销量')
-ax.plot(forecast['销售日期'][-periods:], forecast['新订货量'][-periods:], label='新订货量')
+ax.plot(forecast['销售日期'][-periods:], forecast['加载销量时间效应的最终订货量'][-periods:], label='加载销量时间效应的最终订货量')
 ax.fill_between(apple_all['销售日期'][-periods:], forecast_price['yhat_lower'][-periods:] / forecast['预测单价'], forecast_price['yhat_upper'][-periods:] / forecast['预测单价'], color='grey', alpha=0.2, label=f'{int(interval_width*100)}%的置信区间')
 ax.set_xlabel('销售日期')
 ax.set_ylabel('销量')
-ax.set_title('苹果预测期新订货量对比图')
+ax.set_title('苹果预测期加载销量时间效应的最终订货量对比图')
 ax.legend()
-plt.savefig(r"D:\Work info\SCU\MathModeling\2023\data\processed\question_3\results\apple_forecast_new.svg", dpi=300, bbox_inches='tight')
+plt.savefig(r"D:\Work info\SCU\MathModeling\2023\data\processed\question_3\results\apple_forecast_final.svg", dpi=300, bbox_inches='tight')
 plt.show()

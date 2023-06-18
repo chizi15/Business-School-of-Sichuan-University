@@ -61,6 +61,12 @@ sale_sm = df_p1.dropna()
 sale_sm = sale_sm[sale_sm['profit'] >= 0]
 sale_sm.sort_values(by=['sm_sort', 'busdate'], inplace=True)
 print(f'总共有{sale_sm["sm_sort"].nunique()}个小分类')
+# 判断sale_sm['sm_sort']中是否有小分类的名称中包含'.'，或者sale_sm['sm_sort']的数据类型是否为float64
+if sale_sm['sm_sort'].dtype == 'float64' or sale_sm['sm_sort'].astype(str).str.contains('\.').any():
+    print("sale_sm['sm_sort'] is of type float64 or contains decimal points.")
+    sale_sm['sm_sort'] = sale_sm['sm_sort'].astype(str).str.split('.').str[0]
+else:
+    print("sale_sm['sm_sort'] is not of type float64 and does not contain decimal points.")
 
 
 # question_4
@@ -71,7 +77,7 @@ for code, data in sale_sm.groupby(['sm_sort']):
     plt.title(f'{code}')
     # plt.show()
     fig.savefig(r"D:\Work info\SCU\MathModeling\2023\data\processed\question_4\results\sm_sort\%s.svg" % code)
-fig.clear()
+    fig.clear()
 
 # 筛选销量与价格负相关性强的小分类
 typeA = []
@@ -144,7 +150,7 @@ for i, df in enumerate(list_df_avg):
     plt.title(f'group{i+1}')
     # plt.show()
     fig.savefig(r"D:\Work info\SCU\MathModeling\2023\data\processed\question_4\results\groups\group%s.svg" % (i+1))
-fig.clear()
+    fig.clear()
 
 
 # question5
