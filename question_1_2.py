@@ -8,7 +8,7 @@ import fitter
 import matplotlib.pyplot as plt
 import seaborn as sns
 import sys, os
-base_path = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))  # 两层dirname才能得到上上级目录
+base_path = os.path.dirname(os.path.dirname(__file__))  # 两层dirname才能得到上上级目录
 # 添加其他文件夹路径的脚本到系统临时路径，不会保留在环境变量中，每次重新append即可
 # sys.path.append("D:/Work info/Repositories")
 sys.path.append(base_path)  # regression_evaluation_main所在文件夹的绝对路径
@@ -269,7 +269,7 @@ all_set.to_excel(r"D:\Work info\SCU\MathModeling\2023\data\processed\question_1_
 # 使用ref评估最后一周，即预测期的指标
 sm_qielei_all = account_commodity_mean[account_commodity_mean['sm_sort_name'] == "茄类"][['busdate', 'amount']].rename(columns={'busdate': '销售日期', 'amount': '实际销量'})
 sm_qielei_all = pd.merge(sm_qielei_all, all_set, on='销售日期', how='left')
-sm_qielei_seg = sm_qielei_all[sm_qielei_all['销售日期'] >= '2023-04-01']
+sm_qielei_seg = sm_qielei_all[sm_qielei_all['销售日期'] >= str(sm_qielei_all['销售日期'].max().year)]
 
 res = ref.regression_evaluation_single(y_true=sm_qielei_seg['实际销量'][-periods:].values, y_pred=sm_qielei_seg['预测销量'][-periods:].values)
 accu_sin = ref.accuracy_single(y_true=sm_qielei_seg['实际销量'][-periods:].values, y_pred=sm_qielei_seg['预测销量'][-periods:].values)

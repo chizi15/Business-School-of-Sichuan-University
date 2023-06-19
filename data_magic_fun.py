@@ -49,64 +49,25 @@ def clean_with_bizdata(old_path, new_path, new_storage_path, filename, filetp='c
     print('按日期过滤后, 原文件记录数:', old_df.shape)
     print('按日期过滤后, 新文件记录数:', new_df.shape)
     
-    new_df = pd.concat([old_df, new_df], ignore_index=True)
+    new_df_2 = pd.concat([old_df, new_df], ignore_index=True)
     if filename != 'running':
-        new_df.drop_duplicates(subset=['code', 'busdate', 'organ'], keep='last', inplace=True)
+        if old_df[datecolumn].max() >= new_df[datecolumn].min():
+            print('存在的重复记录是：', new_df_2[new_df_2.duplicated(subset=['organ', 'code', datecolumn], keep=False)])
+            new_df_2.drop_duplicates(subset=['organ', 'code', datecolumn], keep='last', inplace=True)
+        else:
+            print('新表日期最小值大于老表日期最大值，合并后无需去重，原df中存在的重复记录是：', new_df_2[new_df_2.duplicated(subset=['organ', 'code', datecolumn], keep=False)])
     else:
-        new_df.drop_duplicates(subset=['code', 'selldate', 'organ'], keep='last', inplace=True)
+        if old_df[datecolumn].max() >= new_df[datecolumn].min():
+            print('存在的重复记录是：', new_df_2[new_df_2.duplicated(subset=['organ', 'code', datecolumn, 'selltime'], keep=False)])
+            new_df_2.drop_duplicates(subset=['organ', 'code', datecolumn, 'selltime'], keep='last', inplace=True)
+        else:
+            print('新表日期最小值大于老表日期最大值，合并后无需去重，原df中存在的重复记录是：', new_df_2[new_df_2.duplicated(subset=['organ', 'code', datecolumn, 'selltime'], keep=False)])
 
-    new_df.to_csv(store_file_path, index=False, encoding='utf-8-sig')
+    new_df_2.to_csv(store_file_path, index=False, encoding='utf-8-sig')
     
-    print('合并后文件记录数:', new_df.shape)
-    print(f'clean {filename} ok!','\n')
-
-    
-# def clean_with_promotion(old_path, new_path, new_storage_path, filename='promotion', filetp='csv'):
-#     # old_path: 老数据存储路径, 末尾不带'/'
-#     # new_path: 新数据存储路径, 末尾不带'/'
-#     # new_storage_path: 处理后数据存储路径, 末尾不带'/'
-    
-#     if filename == 'running':
-#         datecolumn = 'selldate'
-#     else:
-#         datecolumn = 'busdate'
-    
-#     old_tmp_file = f'{old_path}/{filename}.{filetp}'
-    
-#     new_tmp_file = f'{new_path}/{filename}.{filetp}'
-    
-#     store_file_path = f'{new_storage_path}/{filename}.{filetp}'
-    
-#     old_df = pd.read_csv(old_tmp_file, 
-#                          on_bad_lines='warn', encoding_errors='ignore', low_memory=False, 
-#                          dtype={'code':str},
-#                         )
-    
-#     new_df = pd.read_csv(new_tmp_file, 
-#                          on_bad_lines='warn', encoding_errors='ignore', low_memory=False, 
-#                          dtype={'code':str},
-#                         )
-    
-#     print('原文件记录数:', old_df.shape)
-#     print('新文件记录数:', new_df.shape)
-#     # 筛选促销老表新表数据，老表取2019年数据，新表取2023年数据，并concat生成新的组合促销表
-#     # old_df = old_df[old_df[datecolumn] <= '2019-12-31'].copy()
-#     # new_df = new_df[new_df[datecolumn] >= '2023-01-01'].copy()
-    
-#     if len(new_df.columns) > len(old_df.columns):
-#         # new_df 多了class字段，可以不要，后期根据commodity自行关联
-#         new_df = new_df[old_df.columns].copy()
-        
-#     print('按日期过滤后, 原文件记录数:', old_df.shape)
-#     print('按日期过滤后, 新文件记录数:', new_df.shape)
-    
-#     new_df = pd.concat([old_df, new_df], ignore_index=True)
-    # new_df.drop_duplicates(subset=['code', 'busdate', 'organ'], keep='last', inplace=True)
-    
-#     new_df.to_csv(store_file_path, index=False, encoding='utf-8-sig')
-    
-#     print('合并后文件记录数:', new_df.shape)
-#     print(f'clean {filename} ok!')
+    print('合并后文件记录数:', new_df_2.shape)
+    print(f"合并后df行数减去原来两个df行数之和: {new_df_2.shape[0] - old_df.shape[0] - new_df.shape[0]}")
+    print(f'clean {filename} ok!', '\n')
 
 
 def clean_with_commodity(old_path, new_path, new_storage_path, filename='commodity', filetp='csv'):
@@ -151,15 +112,16 @@ def clean_with_commodity(old_path, new_path, new_storage_path, filename='commodi
     print('原文件记录数:', old_df.shape)
     print('新文件记录数:', new_df.shape)
     
-    new_df = pd.concat([old_df, new_df], ignore_index=True)
+    new_df_2 = pd.concat([old_df, new_df], ignore_index=True)
 
-    new_df = new_df[new_df['code']!='06970935750001'] # 非正常
+    new_df_2 = new_df_2[new_df_2['code']!='06970935750001'] # 非正常
 
-    new_df.drop_duplicates(subset=['code'], keep='last', inplace=True)
+    new_df_2.drop_duplicates(subset=['code'], keep='last', inplace=True)
     
-    new_df.to_csv(store_file_path, index=False, encoding='utf-8-sig')
+    new_df_2.to_csv(store_file_path, index=False, encoding='utf-8-sig')
     
-    print('合并去重后文件记录数:', new_df.shape)
+    print('合并去重后文件记录数:', new_df_2.shape)
+    print(f'合并去重后df行数减去原来两个df行数之和：{new_df_2.shape[0] - old_df.shape[0] - new_df.shape[0]}')
     print(f'clean {filename} ok!', '\n')
     
     
@@ -217,7 +179,7 @@ def cut_desens_commodity(storage_path, desens_path, filename='commodity', filetp
     
     
 def cut_desens_bizdata(storage_path, desens_path, filename, filetp='csv', ratio=1.05):
-    # 销售表、running表脱敏
+    # account销售表、running表、订货数据表脱敏
     # storage_path: 拼接后数据存放路径, 末尾不带'/'
     # desens_path: 处理后存储路径, 末尾不带'/'
     
@@ -233,6 +195,7 @@ def cut_desens_bizdata(storage_path, desens_path, filename, filetp='csv', ratio=
     
     desens_file_path = f'{desens_path}/{filename}.{filetp}'
 
+
     if filename in ['running', 'account']:
         df = pd.read_csv(old_tmp_file, 
                         on_bad_lines='warn', encoding_errors='ignore', low_memory=False, 
@@ -246,6 +209,7 @@ def cut_desens_bizdata(storage_path, desens_path, filename, filetp='csv', ratio=
                                 )
     print('df shape:', df.shape)
     
+
     if filename == 'account':
         assert set(['amount', 'sum_cost', 'sum_price', 'sum_disc']) < set(df.columns), f'{filename} column error'
     
@@ -269,8 +233,8 @@ def cut_desens_bizdata(storage_path, desens_path, filename, filetp='csv', ratio=
         df['code'] = df['code'].apply(lambda x: '10' + x)
         df['order_pred'] = df['order_pred'].apply(lambda x: round(x * ratio, 3))
         df['order_real'] = df['order_real'].apply(lambda x: round(x * ratio, 3))
-        df['loss_real'] = df['loss_real'].apply(lambda x: round(x * ratio, 3))
-        df['loss_theory'] = df['loss_theory'].apply(lambda x: round(x * ratio, 3))
+        # df['loss_real'] = df['loss_real'].apply(lambda x: round(x * ratio, 3))
+        # df['loss_theory'] = df['loss_theory'].apply(lambda x: round(x * ratio, 3))
         
     df.to_csv(desens_file_path, index=False, encoding='utf-8-sig')
 
@@ -305,11 +269,12 @@ def sample_choose(filepath, output_path, filetp='csv'):
                     )
     print(f'{filename} df shape, before merge:', df.shape)
     
-    df = pd.merge(df, sample_df, on=['sm_sort'], how='inner')
+    df_merge = pd.merge(df, sample_df, on=['sm_sort'], how='inner')
     
-    df.to_csv(sample_file_path, index=False, encoding='utf-8-sig')
+    df_merge.to_csv(sample_file_path, index=False, encoding='utf-8-sig')
     
-    print(f'{filename} df shape, after merge:', df.shape, '\n')
+    print(f'{filename} df shape, after merge:', df_merge.shape)
+    print('筛选比例：', round(df_merge.shape[0] / df.shape[0] * 100, 2),'%', '\n')
     
     
     # 样本包含的单品留下来
@@ -327,12 +292,13 @@ def sample_choose(filepath, output_path, filetp='csv'):
                     )
     print(f'{filename} df shape, before screen:', df.shape)
     
-    df = pd.merge(df, tmp_code, on=['code'], how='inner')
-    df = df[df['organ']=='门店B'].copy()
+    df_merge = pd.merge(df, tmp_code, on=['code'], how='inner')
+    df_merge = df_merge[df_merge['organ']=='门店B'].copy()
     
-    df.to_csv(sample_file_path, index=False, encoding='utf-8-sig')
+    df_merge.to_csv(sample_file_path, index=False, encoding='utf-8-sig')
     
-    print(f'{filename} df shape, after screen:', df.shape, '\n')
+    print(f'{filename} df shape, after screen:', df_merge.shape)
+    print('筛选比例：', round(df_merge.shape[0] / df.shape[0] * 100, 2),'%', '\n')
     
 
     # running筛选
@@ -346,12 +312,13 @@ def sample_choose(filepath, output_path, filetp='csv'):
                     )
     print(f'{filename} df shape, before screen:', df.shape)
     
-    df = pd.merge(df, tmp_code, on=['code'], how='inner')
-    df = df[df['organ']=='门店B'].copy()
+    df_merge = pd.merge(df, tmp_code, on=['code'], how='inner')
+    df_merge = df_merge[df_merge['organ']=='门店B'].copy()
     
-    df.to_csv(sample_file_path, index=False)
+    df_merge.to_csv(sample_file_path, index=False)
     
-    print(f'{filename} df shape, after screen:', df.shape, '\n')
+    print(f'{filename} df shape, after screen:', df_merge.shape)
+    print('筛选比例：', round(df_merge.shape[0] / df.shape[0] * 100, 2),'%', '\n')
     
 
     # 订货数据表样本筛选
@@ -366,12 +333,13 @@ def sample_choose(filepath, output_path, filetp='csv'):
                         )
     print(f'{filename} df shape, before screen:', df.shape)
     # 筛选出样本数据
-    df = pd.merge(df, tmp_code, on=['code'], how='inner')
-    df = df[df['organ'] == '门店B'].copy()
+    df_merge = pd.merge(df, tmp_code, on=['code'], how='inner')
+    df_merge = df_merge[df_merge['organ'] == '门店B'].copy()
     # 保存样本数据
-    df.to_csv(sample_file_path, index=False)
-    print(f'{filename} df shape, after screen:', df.shape, '\n')
-    
+    df_merge.to_csv(sample_file_path, index=False)
+    print(f'{filename} df shape, after screen:', df_merge.shape)
+    print('筛选比例：', round(df_merge.shape[0] / df.shape[0] * 100, 2),'%', '\n')
+
     print('sample data ok', '\n')
 
     
@@ -386,41 +354,52 @@ if __name__ == '__main__':
 
     output_path = 'D:\Work info\WestUnion\data\processed\HLJ\脱敏及筛选后样本数据\output'
 
-    print('******** 开始合并不同时间提取的新老表 ********')
+    ratio = 1.05  # 脱敏时对数量乘的系数
+    
+    print('******** 开始合并不同时间提取的新老表 ********', '\n')
 
     # 资料表合并
+    print('******** 开始合并资料表 ********')
     clean_with_commodity(old_path, new_path, new_storage_path, filename='commodity')
 
     # 账表合并
+    print('******** 开始合并账表 ********')
     clean_with_bizdata(old_path, new_path, new_storage_path, filename='account')
 
     # 结存表合并
+    # print('******** 开始合并结存表 ********')
     # clean_with_bizdata(old_path, new_path, new_storage_path, filename='stock')
 
     # running表合并
+    print('******** 开始合并流水表 ********')
     clean_with_bizdata(old_path, new_path, new_storage_path, filename='running')
 
     # 促销表合并
-    # clean_with_promotion(old_path, new_path, new_storage_path, filename='promotion')
+    # print('******** 开始合并促销表 ********')
     # clean_with_bizdata(old_path, new_path, new_storage_path, filename='promotion')
 
-    print('******** 合并数据完成 * 准备降敏 ********')
+
+    print('******** 合并数据完成 * 准备降敏 ********', '\n')
 
     # 资料表脱敏
+    print('******** 开始脱敏资料表 ********')
     cut_desens_commodity(new_storage_path, desens_path, filename='commodity')
 
     # 账表脱敏
-    cut_desens_bizdata(new_storage_path, desens_path, filename='account', ratio=1.05)
+    print('******** 开始脱敏账表 ********')
+    cut_desens_bizdata(new_storage_path, desens_path, filename='account', ratio=ratio)
 
     # running表脱敏
-    cut_desens_bizdata(new_storage_path, desens_path, filename='running', ratio=1.05)
+    print('******** 开始脱敏流水表 ********')
+    cut_desens_bizdata(new_storage_path, desens_path, filename='running', ratio=ratio)
 
     # 订货数据表脱敏
-    cut_desens_bizdata(order_path_old, desens_path, filename='订货数据', ratio=1.05)
+    print('******** 开始脱敏订货数据表 ********')
+    cut_desens_bizdata(order_path_old, desens_path, filename='订货数据', ratio=ratio)
 
-    print('******** 准备筛选样本数据 ********')
+    print('******** 脱敏完成 * 准备筛选样本数据 ********', '\n')
 
     # 筛选出指定种类的样本数据
     sample_choose(desens_path, output_path)
 
-    print('******** 数据处理完成 ********')
+    print('******** 合并、脱敏、筛选完成 ********')
