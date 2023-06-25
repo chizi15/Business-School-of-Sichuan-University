@@ -373,3 +373,5 @@ ax.set_title('苹果预测期加载销量时间效应的最终订货量对比图
 ax.legend()
 plt.savefig(r"D:\Work info\SCU\MathModeling\2023\data\processed\question_3\results\apple_forecast_final.svg", dpi=300, bbox_inches='tight')
 plt.show()
+
+print('question_3运行完毕！')

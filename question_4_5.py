@@ -239,3 +239,5 @@ for i in range(len(sm_sort)):
         else:
             list_forecast[j][i]['yhat'][-periods:] = list_forecast[j][i]['yhat'][-periods:].apply(lambda x: x if x > min_num else list_forecast[j][i]['yhat'][-2*periods:].mean())
         list_forecast[j][i][-periods:].to_excel(r"D:\Work info\SCU\MathModeling\2023\data\processed\question_5\results\{}\{}\forecast.xlsx".format(sm_sort[i], type_[j]), index=False)
+
+print('question_4_5运行完毕！')

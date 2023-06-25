@@ -369,3 +369,5 @@ ax.set_title('茄类预测期加载销量时间效应的最终订货量对比图
 ax.legend()
 plt.savefig(r"D:\Work info\SCU\MathModeling\2023\data\processed\question_1_2\results\qielei_forecast_final.svg", dpi=300, bbox_inches='tight')
 plt.show()
+
+print('question_1_2运行完毕！')

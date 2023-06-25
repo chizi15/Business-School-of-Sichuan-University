@@ -133,7 +133,7 @@ def cut_desens_commodity(storage_path, desens_path, filename='commodity', filetp
     # 脱敏规则
     # code + 10
     # sort + 10
-    # 中文 转小写后 去掉 "好邻居，悦活里，悦活荟，hlj, 悦丰硕" 文字
+    # 中文 转小写后 去掉 "好邻居，悦活里，悦活荟，hlj, 悦丰硕，悦令鲜" 文字
     
     old_tmp_file = f'{storage_path}/{filename}.{filetp}'
     
@@ -162,15 +162,25 @@ def cut_desens_commodity(storage_path, desens_path, filename='commodity', filetp
     df['name'] = df['name'].apply(lambda x: x.replace('悦活里', ''))
     df['name'] = df['name'].apply(lambda x: x.replace('悦活荟', ''))
     df['name'] = df['name'].apply(lambda x: x.replace('悦丰硕', ''))
+    df['name'] = df['name'].apply(lambda x: x.replace('悦令鲜', ''))
 
     df['sm_sort_name'] = df['sm_sort_name'].apply(lambda x: x.replace('好邻居', ''))
     df['sm_sort_name'] = df['sm_sort_name'].apply(lambda x: x.replace('悦活里', ''))
+    df['sm_sort_name'] = df['sm_sort_name'].apply(lambda x: x.replace('悦活荟', ''))
+    df['sm_sort_name'] = df['sm_sort_name'].apply(lambda x: x.replace('悦丰硕', ''))
+    df['sm_sort_name'] = df['sm_sort_name'].apply(lambda x: x.replace('悦令鲜', ''))
 
     df['md_sort_name'] = df['md_sort_name'].apply(lambda x: x.replace('好邻居', ''))
     df['md_sort_name'] = df['md_sort_name'].apply(lambda x: x.replace('悦活里', ''))
+    df['md_sort_name'] = df['md_sort_name'].apply(lambda x: x.replace('悦活荟', ''))
+    df['md_sort_name'] = df['md_sort_name'].apply(lambda x: x.replace('悦丰硕', ''))
+    df['md_sort_name'] = df['md_sort_name'].apply(lambda x: x.replace('悦令鲜', ''))
 
     df['bg_sort_name'] = df['bg_sort_name'].apply(lambda x: x.replace('好邻居', ''))
     df['bg_sort_name'] = df['bg_sort_name'].apply(lambda x: x.replace('悦活里', ''))
+    df['bg_sort_name'] = df['bg_sort_name'].apply(lambda x: x.replace('悦活荟', ''))
+    df['bg_sort_name'] = df['bg_sort_name'].apply(lambda x: x.replace('悦丰硕', ''))
+    df['bg_sort_name'] = df['bg_sort_name'].apply(lambda x: x.replace('悦令鲜', ''))
     
     df.to_csv(desens_file_path, index=False, encoding='utf-8-sig')
 
@@ -186,7 +196,6 @@ def cut_desens_bizdata(storage_path, desens_path, filename, filetp='csv', ratio=
     # 脱敏规则
     # code + 10
     # sort + 10
-    # 中文 转小写后 去掉 "好邻居，悦活里，悦活荟，hlj, 悦丰硕" 文字
     # 数字字段 * ratio
     
     assert (filename in ['running', 'account', "订货数据"]), 'filename error'
@@ -246,7 +255,7 @@ def sample_choose(filepath, output_path, filetp='csv'):
     # 筛选样本数据：传入脱敏后的数据，输出指定种类数据
     # filepath: 源数据存放路径, 末尾不带'/'
     
-    # 样本类别
+    # 原始小分类编码
     sample_sort = ['12010101', '11010101', '11010201', '11010301', '11010402',
                     '11010501', '11010502', '11010503', '11010504', '11010601',
                     '11010602', '11010603', '11010801', '13010101', '13010102',
@@ -354,7 +363,7 @@ if __name__ == '__main__':
 
     output_path = 'D:\Work info\WestUnion\data\processed\HLJ\脱敏及筛选后样本数据\output'
 
-    ratio = 1.05  # 脱敏时对数量乘的系数
+    ratio = 1.5  # 脱敏时对数量乘的系数
     
     print('******** 开始合并不同时间提取的新老表 ********', '\n')
 

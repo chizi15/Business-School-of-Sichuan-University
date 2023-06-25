@@ -37,3 +37,5 @@ account_seg = account_apple.groupby(['busdate'])[['sum_cost']].mean().reset_inde
 
 account_apple_stds = pd.merge(account_apple_run, account_seg, on='busdate', how='left')
 account_apple_stds.to_excel(r"D:\Work info\SCU\MathModeling\2023\data\processed\question_3\students_use_data\account_apple_unprocessed.xlsx", index=False, sheet_name='未经过缺货填充的账表_苹果')
+
+print('question_3_pre运行完毕！')
