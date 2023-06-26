@@ -15,40 +15,45 @@ output_path_self_use = r"D:\Work info\SCU\MathModeling\2023\data\ZNEW_DESENS\ZNE
 first_day = '2020-07-01'
 last_day = '2023-04-20'
 sm_sort_name = ['食用菌', '花叶类', '水生根茎类', '辣椒类', '茄类', '花菜类']
+unit_cost_critical = 0  # 进货单价的筛选阈值，小于等于该值的数据将被剔除
 
 
 commodity = pd.read_csv(f'{input_path}/commodity.csv')
 # 先转成int64，以免位数超限被转换为负数
 if not isinstance(commodity['code'].iloc[0], str):
     commodity[['code', 'sm_sort', 'md_sort', 'bg_sort']] = commodity[['code', 'sm_sort', 'md_sort', 'bg_sort']].astype('Int64').astype(str)
+# commodity按sm_sort_name进行第一次筛选
 commodity = commodity[commodity['sm_sort_name'].isin(sm_sort_name)]
+commodity = commodity[~((commodity['sm_sort_name'] == '茄类') & ((commodity['name'].str.contains('番茄')) | (commodity['name'].str.contains('西红柿'))))]
 
 
 account = pd.read_csv(f'{input_path}/account.csv')
 # 判断account中code列的数据类型是否为str，如果不是，则转换为str
 if not isinstance(account['code'].iloc[0], str):
     account['code'] = account['code'].astype('Int64').astype(str)
+# account按commodity中的code进行第一次筛选
 account = account[account['code'].isin(commodity['code'])]
 # 将account中busdate列的数据类型转换为日期类型，但不带时分秒
 account['busdate'] = pd.to_datetime(account['busdate'], format='%Y-%m-%d')
 account.sort_values(by=['busdate', 'code'], inplace=True)
-# account = account[account['busdate'] >= order['busdate'].min()]
+# account按日期范围进行第二次筛选
 account = account[(account['busdate'] >= first_day) & (account['busdate'] <= last_day)]
 account['busdate'] = account['busdate'].apply(lambda x: x.date())
-print(f"account.isnull().sum():\n{account.isnull().sum()}", '\n')
-# account.dropna(subset=['unit_cost'], inplace=True)
+account['unit_cost'] = account['sum_cost'] / account['amount']
+account.dropna(subset=['unit_cost'], inplace=True)
+account['unit_cost'] = account['unit_cost'].round(2)
+# account按unit_cost列进行第三次筛选。以此账表中的code和busdate，作为后续筛选commodity和running的基准。
+account = account[account['unit_cost'] > unit_cost_critical]
+print(f"account.isnull().sum():\n{account.isnull().sum().T}", '\n')
 print(account.info(), '\n')
 
 account.to_csv(f'{output_path_self_use}/account.csv', index=False)
-account['unit_cost'] = account['sum_cost'] / account['amount']
 account.rename(columns={'class': '课别', 'code': '单品编码', 'busdate': '日期', 'unit_cost': '当天进货单价(元)'}, inplace=True)
 account.drop(columns=['organ', 'sum_cost', 'amount', 'sum_price', 'sum_disc'], inplace=True)
-account['当天进货单价(元)'] = account['当天进货单价(元)'].round(2)
 account.to_excel(f'{output_path}/account.xlsx', index=False)
 
 
-commodity = commodity[~commodity['name'].str.contains('冻')]
-# account按日期范围筛选后，再筛选commodity中code列的值在account中code列存在的记录，即account中的code列是commodity中code列的子集，因此commodity中的code列的值不会出现account中code列不存在的情况。顺序不能颠倒。
+# account中code形成基准后，再次筛选commodity，才能输出，使得commodity中的code与account中的code一致
 commodity = commodity[commodity['code'].isin(account['单品编码'])]
 print(f"commodity.isnull().sum():\n{commodity.isnull().sum()}", '\n')
 print('commodity.info()','\n',commodity.info(), '\n')
@@ -61,25 +66,30 @@ commodity.to_excel(f'{output_path}/commodity.xlsx', index=False)
 running = pd.read_csv(f'{input_path}/running.csv')
 if not isinstance(running['code'].iloc[0], str):
     running['code'] = running['code'].astype('Int64').astype(str)
+# running按最终形成基准的commodity中的code进行第一次筛选
 running = running[running['code'].isin(commodity['单品编码'])]
 running['selldate'] = pd.to_datetime(running['selldate'])
+running['selldate'] = running['selldate'].apply(lambda x: x.date())
+# 将running中selldate和code，与account中日期和单品编码相同的筛选出来
+running = running.merge(account[['日期', '单品编码']], how='inner', left_on=['selldate', 'code'], right_on=['日期', '单品编码'])
+# merge之后马上剔除多余的列，不能留到后面有相同列名的时候一起剔除，否则会剔除掉account中的日期和单品编码
+running.drop(columns=['日期', '单品编码'], inplace=True)
 running.sort_values(by=['selldate', 'code'], inplace=True)
-running = running[(running['selldate'] >= first_day) & (running['selldate'] <= last_day)]
-# running = running[running['selldate'] >= order['busdate'].min()]
-print(f"running.isnull().sum():\n{running.isnull().sum()}", '\n')
-
-running.to_csv(f'{output_path_self_use}/running.csv', index=False)
-
 running['打折销售'] = ['是' if x > 0 else '否' for x in running['sum_disc']]
 assert running['打折销售'].value_counts().values.sum() == running.shape[0], '流水表打折销售列计算有误'
-running.drop(columns=['sum_disc', 'sum_sell'], inplace=True)
-# 将selldate中datetime64[ns]类型的数据转换为datetime.date类型
-running['selldate'] = running['selldate'].apply(lambda x: x.date())
+
+# 如果苹果在commodity的小分类名称中存在，需要输出running表，用于question_3_pre.py
+if '苹果' in commodity['小分类名称'].unique():
+    running.to_csv(f'{output_path_self_use}/running.csv', index=False)
+
 running.rename(columns={'selldate': '销售日期', 'selltime': '扫码销售时间', 'class': '课别', 'code': '单品编码', 'amount': '销量', 'price': '销售单价(元)', 'type': '销售类型'}, inplace=True)
-running.drop(columns=['organ'], inplace=True)
+running.drop(columns=['organ', 'sum_disc', 'sum_sell'], inplace=True)
+
 run_com = pd.merge(running, commodity, on=['课别', '单品编码'], how='left')
 print(run_com['小分类名称'].value_counts().sort_values(ascending=False), '\n')
 print(f"小分类编码与名称不唯一匹配的个数：{sum(run_com['小分类编码'].value_counts().sort_values(ascending=False).values != run_com['小分类名称'].value_counts().sort_values(ascending=False).values)}", '\n')
+print(f"running.isnull().sum():\n{running.isnull().sum()}",'\n')
+print('running.info()','\n',running.info(),'\n')
 
 # running.to_csv(f'{output_path}/running.csv', index=False, encoding='utf-8-sig')  # encoding='utf-8-sig'，解决excel打开，中文是乱码的问题
 running.to_excel(f'{output_path}/running.xlsx', index=False)
