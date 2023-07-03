@@ -17,7 +17,7 @@ pd.set_option('display.max_rows', 8)
 
 coef = 0.5 # 相关系数排序分组时的阈值
 corr_neg = -0.3 # 销量与售价的负相关性阈值
-periods = 7 # 预测步数
+periods = 1 # 预测步数
 interval_width = 0.95 # prophet的置信区间宽度
 min_num = 0.0 # 设置预测销量、售价、毛利率、销售额的最小取值
 
