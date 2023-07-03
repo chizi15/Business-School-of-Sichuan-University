@@ -31,6 +31,7 @@ print('Imported packages successfully.', '\n')
 
 # 设置全局参数
 periods = 7 # 预测步数
+output_index = 7  # 将前output_index个预测结果作为最终结果
 extend_power = 1/5 # 数据扩增的幂次
 interval_width = 0.95 # prophet的置信区间宽度
 mcmc_samples = 100 # mcmc采样次数
@@ -38,7 +39,7 @@ mcmc_samples = 100 # mcmc采样次数
 
 # read and summerize data
 account = pd.read_csv(r"D:\Work info\SCU\MathModeling\2023\data\ZNEW_DESENS\ZNEW_DESENS\sampledata\account.csv")
-account['busdate'] = pd.to_datetime(account['busdate'], infer_datetime_format=True)
+account['busdate'] = pd.to_datetime(account['busdate'])
 account.sort_values(by=['busdate'], inplace=True)
 account['code'] = account['code'].astype('str')
 acct_grup = account.groupby(["organ", "code"])
@@ -69,11 +70,13 @@ print(f'\naccount_commodity_mean\n\nshape: {account_commodity_mean.shape}\n\ndty
 
 # question_1
 sm_qielei_all = account_commodity_mean[account_commodity_mean['sm_sort_name'] == "茄类"]
+sm_qielei_all = sm_qielei_all.round(4)
 sm_qielei_all.to_excel(r"D:\Work info\SCU\MathModeling\2023\data\processed\question_1_2\teachers_use\data\sm_qielei_all.xlsx", index=False, sheet_name='茄类在全集上的样本')
 # 获取茄类在训练集上的样本
 sm_qielei = sm_qielei_all[:-periods]
 # 将训练集上负毛利的异常样本剔除
 sm_qielei = sm_qielei[sm_qielei['sum_cost'] <= sm_qielei['sum_price']]
+sm_qielei = sm_qielei.round(3)
 sm_qielei.to_excel(r"D:\Work info\SCU\MathModeling\2023\data\processed\question_1_2\students_use_data\sm_qielei_train.xlsx", index=False, sheet_name='茄类在训练集上的样本')
 
 # 对sm_qielei_all中数值型变量的列：amount，sum_cost和sum_price画时序图
@@ -135,6 +138,7 @@ qielei_prophet_amount['weekday'] = qielei_prophet_amount['ds'].dt.weekday # 0-6,
 qielei_prophet_amount['holiday'] = qielei_prophet_amount['ds'].apply(lambda x: chinese_calendar.get_holiday_detail(x)[1] if chinese_calendar.get_holiday_detail(x)[0] else None)
 
 # 保存输出带有时间效应和星期、节假日标签的茄类销量样本
+qielei_prophet_amount = qielei_prophet_amount.round(3)
 qielei_prophet_amount.to_excel(r"D:\Work info\SCU\MathModeling\2023\data\processed\question_1_2\results\qielei_prophet_amount_with_effect.xlsx", index=False, sheet_name='用历史销量计算出的时间效应，合并到训练集中')
 
 # 验证prophet分解出的各个分项的计算公式
@@ -158,6 +162,7 @@ fig.savefig(r"D:\Work info\SCU\MathModeling\2023\data\processed\question_1_2\res
 # 计算sm_qielei['amt_no_effect']和sm_qielei['amount']的统计信息
 sm_qielei_amount_effect_compare = sm_qielei[['amount', 'amt_no_effect']].describe()
 print(sm_qielei_amount_effect_compare)
+sm_qielei_amount_effect_compare = sm_qielei_amount_effect_compare.round(3)
 sm_qielei_amount_effect_compare.to_excel(r"D:\Work info\SCU\MathModeling\2023\data\processed\question_1_2\results\sm_qielei_amount_effect_compare.xlsx", sheet_name='剔除时间效应前后，历史销量的描述性统计信息对比')
 # 计算sm_qielei['amt_no_effect']和sm_qielei['amount']的相关系数
 print(sm_qielei[['amount', 'amt_no_effect']].corr(), '\n')
@@ -179,6 +184,7 @@ sm_qielei_amt_ext_describe = pd.Series(sm_qielei_amt_ext, name='sm_qielei_amt_ex
 sm_qielei_amt_describe = sm_qielei['amt_no_effect'].describe()
 sm_qielei_amt_ext_compare = pd.concat([sm_qielei_amt_describe, sm_qielei_amt_ext_describe], axis=1).rename(columns={'amt_no_effect': 'sm_qielei_amt_describe'})
 print(sm_qielei_amt_ext_compare, '\n')
+sm_qielei_amt_ext_compare = sm_qielei_amt_ext_compare.round(2)
 sm_qielei_amt_ext_compare.to_excel(r"D:\Work info\SCU\MathModeling\2023\data\processed\question_1_2\results\sm_qielei_amt_ext_compare.xlsx", sheet_name='数据扩增前后，历史销量的描述性统计信息对比')
 
 # 给出sm_qielei_amt_ext和sm_qielei['amt_no_effect'].values的Shapiro-Wilk检验结果
@@ -208,6 +214,7 @@ f = fitter.Fitter(sm_qielei_amt_ext, distributions=['cauchy', 'chi2', 'expon', '
 f.fit()
 comparison_of_distributions_qielei = f.summary(Nbest=5)
 print(f'\n{comparison_of_distributions_qielei}\n')
+comparison_of_distributions_qielei = comparison_of_distributions_qielei.round(4)
 comparison_of_distributions_qielei.to_excel(r"D:\Work info\SCU\MathModeling\2023\data\processed\question_1_2\results\comparison_of_distributions_qielei.xlsx", sheet_name='comparison of distributions_qielei')
 
 name = list(f.get_best().keys())[0]
@@ -263,6 +270,7 @@ all_set.drop(columns=['year', 'month', 'day'], inplace=True)
 all_set.rename(columns={'y': '预测销量', 'ds': '销售日期'}, inplace=True)
 all_set['训练集平均毛利率'] = profit_avg
 all_set['第一次计算的平稳订货量'] = q_steady
+all_set = all_set.round(4)
 all_set.to_excel(r"D:\Work info\SCU\MathModeling\2023\data\processed\question_1_2\results\question_1_final_qielei_all_set.xlsx", index=False, encoding='utf-8-sig', sheet_name='问题1最终结果：茄类全集上的预测订货量及时间效应系数')
 
 
@@ -280,6 +288,7 @@ metrics_names = ['AA',
  'MSE', 'MSLE',
  'VAR', 'R2', 'PR', 'SR', 'KT', 'WT', 'MGC']
 metrics = pd.Series(data=metrics_values, index=metrics_names, name='评估指标值')
+metrics = metrics.round(4)
 metrics.to_excel(r"D:\Work info\SCU\MathModeling\2023\data\processed\question_1_2\results\qielei_metrics.xlsx", index=True, encoding='utf-8-sig', sheet_name='20种评估指标的取值')
 print(f'metrics: \n {metrics}', '\n')
 
@@ -312,6 +321,7 @@ fig2 = m_price.plot_components(forecast_price)
 plt.show()
 fig1.savefig(r"D:\Work info\SCU\MathModeling\2023\data\processed\question_1_2\results\fit_revenue.svg", dpi=300, bbox_inches='tight')
 fig2.savefig(r"D:\Work info\SCU\MathModeling\2023\data\processed\question_1_2\results\fit_revenue_components.svg", dpi=300, bbox_inches='tight')
+
 
 sm_qielei['unit_cost'] = sm_qielei['sum_cost'] / sm_qielei['amount']
 qielei_prophet_cost = sm_qielei[['busdate', 'unit_cost']].rename(columns={'busdate': 'ds', 'unit_cost': 'y'})
@@ -348,13 +358,19 @@ print(f'q_star_new =\n{q_star_new}', '\n')
 forecast['加载毛利率时间效应的第二次报童订货量'] = q_steady_star
 forecast['q_star_new'] = q_star_new
 forecast.rename(columns={'ds': '销售日期', 'yhat': '预测金额', 'price': '预测单价', 'unit_cost': '预测成本单价', 'profit': '预测毛利率', 'q_star_new': '加载销量时间效应的最终订货量'}, inplace=True)
-forecast.to_excel(r"D:\Work info\SCU\MathModeling\2023\data\processed\question_1_2\results\question_2_final_qielei_forecast.xlsx", index=False, encoding='utf-8-sig', sheet_name='问题2最终结果：茄类在预测期每日的预测销售额、预测单价、预测成本、预测毛利率、加载毛利率时间效应的第二次报童订货量和加载销量时间效应的最终订货量')
+forecast[['预测金额', '预测单价', '预测成本单价']] = forecast[['预测金额', '预测单价', '预测成本单价']].applymap(lambda x: round(x, 2))
+forecast[['加载毛利率时间效应的第二次报童订货量', '加载销量时间效应的最终订货量']] = forecast[['加载毛利率时间效应的第二次报童订货量', '加载销量时间效应的最终订货量']].apply(lambda x: round(x).astype(int))
+forecast['预测毛利率'] = forecast['预测毛利率'].apply(lambda x: round(x, 4))
+forecast_output = forecast.iloc[[output_index-1]]
+forecast_output['销售日期'] = forecast_output['销售日期'].dt.date
+forecast_output.to_excel(r"D:\Work info\SCU\MathModeling\2023\data\processed\question_1_2\results\question_2_final_qielei_forecast.xlsx", index=False, encoding='utf-8-sig', sheet_name='问题2最终结果：茄类在预测期每日的预测销售额、预测单价、预测成本、预测毛利率、加载毛利率时间效应的第二次报童订货量和加载销量时间效应的最终订货量')
 
 # 评估指标
 res_new = ref.regression_evaluation_single(y_true=sm_qielei_all['实际销量'][-periods:].values, y_pred=forecast['加载销量时间效应的最终订货量'][-periods:].values)
 accu_sin_new = ref.accuracy_single(y_true=sm_qielei_all['实际销量'][-periods:].values, y_pred=forecast['加载销量时间效应的最终订货量'][-periods:].values)
 metrics_values_new = [accu_sin_new] + list(res_new[:-2])
 metrics_new = pd.Series(data=metrics_values_new, index=metrics_names, name='新评估指标值')
+metrics_new = metrics_new.round(4)
 metrics_new.to_excel(r"D:\Work info\SCU\MathModeling\2023\data\processed\question_1_2\results\qielei_metrics_final.xlsx", index=True, encoding='utf-8-sig', sheet_name='加载销量时间效应的最终订货量的评估指标值')
 print(f'metrics_new: \n {metrics_new}', '\n')
 

@@ -12,7 +12,7 @@ pd.set_option('display.max_rows', 6)
 input_path = r'D:\Work info\WestUnion\data\processed\HLJ\脱敏及筛选后样本数据\output'
 input_path_commodity = r'D:\Work info\SCU\MathModeling\2023\data\output'
 output_path = r"D:\Work info\SCU\MathModeling\2023\data\output"
-first_day = '2020-07-01'
+first_day = '2020-04-21'
 last_day = '2023-04-20'
 sm_sort_name = ['食用菌', '花叶类', '水生根茎类', '辣椒类', '茄类', '花菜类']
 add_order_loss = False
