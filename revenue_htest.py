@@ -12,7 +12,7 @@ pd.set_option('display.max_rows', 4)
 
 
 # 模型参数
-seasonality_mode = tuple(['additive', 'multiplicative'])[1]
+seasonality_mode = tuple(['additive', 'multiplicative'])[0]
 holiday = True
 weekly = True
 yearly = True

@@ -34,7 +34,7 @@ print('Imported packages successfully.', '\n')
 periods = 7 # 预测步数
 extend_power = 1/5 # 数据扩增的幂次
 interval_width = 0.95 # prophet的置信区间宽度
-mcmc_samples = 100 # prophet的mcmc采样次数
+mcmc_samples = 0 # prophet的mcmc采样次数
 
 
 # read and summerize data

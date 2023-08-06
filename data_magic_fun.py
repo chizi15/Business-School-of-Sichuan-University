@@ -188,7 +188,7 @@ def cut_desens_commodity(storage_path, desens_path, filename='commodity', filetp
     print(f'desens {filename} ok', '\n')
     
     
-def cut_desens_bizdata(storage_path, desens_path, filename, filetp='csv', ratio=1.05):
+def cut_desens_bizdata(storage_path, desens_path, filename, ratio, filetp='csv'):
     # account销售表、running表、订货数据表脱敏
     # storage_path: 拼接后数据存放路径, 末尾不带'/'
     # desens_path: 处理后存储路径, 末尾不带'/'
@@ -355,7 +355,7 @@ def sample_choose(filepath, output_path, filetp='csv'):
 if __name__ == '__main__':
 
     old_path = 'D:\Work info\WestUnion\data\origin\HLJ'
-    new_path = 'D:\Work info\WestUnion\data\origin\HLJ销售数据20221101-20230420'
+    new_path = 'D:\Work info\WestUnion\data\origin\HLJ销售数据20221101-20230701'
 
     order_path_old = "D:\Work info\WestUnion\data\origin\HLJ-订货数据"
     new_storage_path = 'D:\Work info\WestUnion\data\processed\HLJ\合并后数据'
@@ -363,13 +363,15 @@ if __name__ == '__main__':
 
     output_path = 'D:\Work info\WestUnion\data\processed\HLJ\脱敏及筛选后样本数据\output'
 
-    ratio = 1.5  # 脱敏时对数量乘的系数
+    ratio = 1  # 脱敏时对数量乘的系数
     
     print('******** 开始合并不同时间提取的新老表 ********', '\n')
 
     # 资料表合并
     print('******** 开始合并资料表 ********')
-    clean_with_commodity(old_path, new_path, new_storage_path, filename='commodity')
+    clean_with_commodity('D:\Work info\WestUnion\data\origin\HLJ', 'D:\Work info\WestUnion\data\origin\HLJ销售数据20221101-20230420', 'D:\Work info\WestUnion\data\processed\HLJ\合并后数据', filename='commodity')
+
+    clean_with_commodity('D:\Work info\WestUnion\data\processed\HLJ\合并后数据', "D:\Work info\WestUnion\data\origin\HLJ销售数据20230421-20230701", 'D:\Work info\WestUnion\data\processed\HLJ\合并后数据', filename='commodity')
 
     # 账表合并
     print('******** 开始合并账表 ********')

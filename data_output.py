@@ -12,8 +12,8 @@ pd.set_option('display.max_rows', 6)
 input_path = r'D:\Work info\WestUnion\data\processed\HLJ\脱敏及筛选后样本数据\output'
 output_path = r"D:\Work info\SCU\MathModeling\2023\data\output"
 output_path_self_use = r"D:\Work info\SCU\MathModeling\2023\data\ZNEW_DESENS\ZNEW_DESENS\sampledata"
-first_day = '2020-04-21'
-last_day = '2023-04-20'
+first_day = '2020-07-01'
+last_day = '2023-07-01'
 sm_sort_name = ['食用菌', '花叶类', '水生根茎类', '辣椒类', '茄类', '花菜类']
 unit_cost_critical = 0  # 进货单价的筛选阈值，小于等于该值的数据将被剔除
 
@@ -91,8 +91,10 @@ print(f"小分类编码与名称不唯一匹配的个数：{sum(run_com['小分�
 print(f"running.isnull().sum():\n{running.isnull().sum()}",'\n')
 print('running.info()','\n',running.info(),'\n')
 
-# running.to_csv(f'{output_path}/running.csv', index=False, encoding='utf-8-sig')  # encoding='utf-8-sig'，解决excel打开，中文是乱码的问题
-running.to_excel(f'{output_path}/running.xlsx', index=False)
+try:
+    running.to_excel(f'{output_path}/running.xlsx', index=False)
+except:
+    running.to_csv(f'{output_path}/running.csv', index=False, encoding='utf-8-sig')  # encoding='utf-8-sig'，解决excel打开，中文是乱码的问题
 print(running['销售类型'].value_counts().sort_values(ascending=False), '\n')
 print(running['打折销售'].value_counts().sort_values(ascending=False), '\n')
 
