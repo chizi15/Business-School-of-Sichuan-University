@@ -13,8 +13,7 @@ base_path = os.path.dirname(os.path.dirname(__file__))  # 两层dirname才能得
 # sys.path.append("D:/Work info/Repositories")
 sys.path.append(base_path)  # regression_evaluation_main所在文件夹的绝对路径
 from regression_evaluation_main import regression_evaluation_def as ref
-pd.set_option('display.max_columns', None)
-pd.set_option('display.max_rows', 7)
+from data_output import output_path_self_use, last_day
 plt.rcParams['font.sans-serif']=['SimHei']  # 用来正常显示中文标签
 plt.rcParams['axes.unicode_minus']=False  # 用来正常显示负号
 """
@@ -34,16 +33,20 @@ periods = 7 # 预测步数
 output_index = 7  # 将前output_index个预测结果作为最终结果
 extend_power = 1/5 # 数据扩增的幂次
 interval_width = 0.95 # prophet的置信区间宽度
+last_day = last_day # 训练集的最后一天+1，即预测集的第一天
 mcmc_samples = 0 # mcmc采样次数
-last_day = '2023-07-01' # 训练集的最后一天+1，即预测集的第一天
 
+pd.set_option('display.max_columns', None)
+pd.set_option('display.max_rows', periods)
+
+input_path = output_path_self_use + '\\'
 # create the directory if it doesn't exist
 output_path = r"D:\Work info\SCU\MathModeling\2023\data\processed\question_2"
 if not os.path.exists(output_path):
     os.makedirs(output_path)
 
 # read and summerize data
-account = pd.read_csv(r"D:\Work info\SCU\MathModeling\2023\data\ZNEW_DESENS\ZNEW_DESENS\sampledata\account.csv")
+account = pd.read_csv(input_path + "account.csv")
 account['busdate'] = pd.to_datetime(account['busdate'])
 account.sort_values(by=['busdate'], inplace=True)
 account['code'] = account['code'].astype('str')
@@ -59,7 +62,7 @@ print("各单品的最晚销售日期:","\n",account.groupby(['organ', 'code'], 
 print(f"销售至{account['busdate'].max()}的单品有{sum((account.groupby(['organ', 'code'], as_index=False)['busdate'].max() == account['busdate'].max())['busdate'])}个，占总单品数{len(acct_grup)}之比为：{round(sum((account.groupby(['organ', 'code'], as_index=False)['busdate'].max() == account['busdate'].max())['busdate']) / len(acct_grup) * 100, 2)}%")
 
 
-commodity = pd.read_csv(r"D:\Work info\SCU\MathModeling\2023\data\ZNEW_DESENS\ZNEW_DESENS\sampledata\commodity.csv")
+commodity = pd.read_csv(input_path + "commodity.csv")
 commodity[['class', 'bg_sort', 'md_sort', 'sm_sort', 'code']] = commodity[['class', 'bg_sort', 'md_sort', 'sm_sort', 'code']].astype('str')
 comodt_grup = commodity.groupby(['code'])
 print(f'\ncommodity\n\nshape: {commodity.shape}\n\ndtypes:\n{commodity.dtypes}\n\nisnull-columns:\n{commodity.isnull().any()}'
@@ -106,7 +109,7 @@ for _ in account_commodity['sm_sort_name'].unique():
     # 用sm_qielei_all的最后一行复制出6行，并将busdate分别加上1、2、3、4、5、6，得到预测期的日期
     sm_qielei_all = sm_qielei_all.append([sm_qielei_all.iloc[-1, :]] * (periods-1), ignore_index=True)
     sm_qielei_all['busdate'][-(periods-1):] = sm_qielei_all['busdate'][-(periods-1):] + pd.to_timedelta(np.arange(1, periods), unit='d')
-    sm_qielei_all[-(periods-1):]['amount'] += np.random.normal(0, sm_qielei_all['amount'].mean()/10, periods-1) # 为预测期的销量添加随机噪声，防止后面metrics计算中MGC报错
+    sm_qielei_all[-(periods-1):]['amount'] += np.random.normal(0, max(0, min(sm_qielei_all['amount'].std()**0.5, sm_qielei_all['amount'].mean()/10)), periods-1) # 为预测期的销量添加随机噪声，防止后面metrics计算中MGC报错
 
     # 将全集上busdate缺失不连续的行用插值法进行填充
     sm_qielei_all_col = sm_qielei_all.set_index('busdate').resample('D').mean().interpolate(method='linear').reset_index()
@@ -135,7 +138,7 @@ for _ in account_commodity['sm_sort_name'].unique():
         plt.xticks(rotation=45)
         plt.xlabel('busdate')
         plt.ylabel(col)
-        plt.title('Time Series Graph')
+        plt.title(f'{_}Time Series Graph')
         plt.show()
 
     # 输出这三条时序图中，非空数据的起止日期，用循环实现
@@ -151,7 +154,7 @@ for _ in account_commodity['sm_sort_name'].unique():
     plt.xticks(rotation=45)
     plt.xlabel('busdate')
     plt.ylabel('amount')
-    plt.title('Time Series Graph')
+    plt.title(f'{_}Time Series Graph')
     plt.show()
 
     # 用prophet获取训练集上的星期效应系数、节日效应系数和年季节性效应系数
@@ -213,8 +216,8 @@ for _ in account_commodity['sm_sort_name'].unique():
     plt.plot(sm_qielei['busdate'], sm_qielei['amt_no_effect'], label='剔除时间效应后销量')
     plt.xticks(rotation=45)
     plt.xlabel('销售日期')
-    plt.ylabel('茄类销量')
-    plt.title('剔除时间效应前后，茄类销量时序对比')
+    plt.ylabel(f'{_}销量')
+    plt.title(f'{_}剔除时间效应前后，销量时序对比')
     plt.legend(loc='best')
     plt.show()
     fig.savefig(output_path + f"\{_}_剔除时间效应前后，{_}销量时序对比.svg", dpi=300, bbox_inches='tight')
@@ -223,7 +226,7 @@ for _ in account_commodity['sm_sort_name'].unique():
     sm_qielei_amount_effect_compare = sm_qielei[['amount', 'amt_no_effect']].describe()
     print(sm_qielei_amount_effect_compare.round(3), '\n')
     sm_qielei_amount_effect_compare = sm_qielei_amount_effect_compare.round(3)
-    sm_qielei_amount_effect_compare.to_excel(output_path + f"{_}_剔除时间效应前后，历史销量的描述性统计信息对比.xlsx", sheet_name=f'{_}剔除时间效应前后，历史销量的描述性统计信息对比')
+    sm_qielei_amount_effect_compare.to_excel(output_path + f"\{_}_剔除时间效应前后，历史销量的描述性统计信息对比.xlsx", sheet_name=f'{_}剔除时间效应前后，历史销量的描述性统计信息对比')
     # 计算sm_qielei['amt_no_effect']和sm_qielei['amount']的相关系数
     print(sm_qielei[['amount', 'amt_no_effect']].corr().round(4), '\n')
 
@@ -235,7 +238,7 @@ for _ in account_commodity['sm_sort_name'].unique():
     sns.distplot(sm_qielei_amt_ext, ax=ax, label='extended')
     sns.distplot(sm_qielei['amt_no_effect'].values, ax=ax, label='original')
     ax.legend()
-    plt.title('数据扩增前后，历史销量的概率密度函数对比图')
+    plt.title(f'{_}数据扩增前后，历史销量的概率密度函数对比图')
     plt.show()
     fig.savefig(output_path + f"\{_}_数据扩增前后，历史销量的概率密度函数对比图.svg", dpi=300, bbox_inches='tight')
 
@@ -283,9 +286,9 @@ for _ in account_commodity['sm_sort_name'].unique():
     print(f'best distribution: {name}''\n')
     f.plot_pdf(Nbest=5)
     figure = plt.gcf()  # 获取当前图像
-    plt.xlabel('用于拟合分布的，茄类数据扩增后的历史销量')
+    plt.xlabel(f'用于拟合分布的，{_}数据扩增后的历史销量')
     plt.ylabel('Probability')
-    plt.title('comparison of distributions_qielei')
+    plt.title(f'{_} comparison of distributions_qielei')
     plt.show()
     figure.savefig(output_path + f"\{_}_comparison of distributions.svg")
     figure.clear()  # 先画图plt.show，再释放内存
@@ -293,7 +296,7 @@ for _ in account_commodity['sm_sort_name'].unique():
     figure = plt.gcf()  # 获取当前图像
     plt.plot(f.x, f.y, 'b-.', label='f.y')
     plt.plot(f.x, f.fitted_pdf[name], 'r-', label="f.fitted_pdf")
-    plt.xlabel('用于拟合分布的，茄类数据扩增后的历史销量')
+    plt.xlabel(f'用于拟合分布的，{_}数据扩增后的历史销量')
     plt.ylabel('Probability')
     plt.title(f'best distribution: {name}')
     plt.legend()
@@ -362,7 +365,7 @@ for _ in account_commodity['sm_sort_name'].unique():
     ax.fill_between(sm_qielei_seg['销售日期'][-output_index:], forecast_amount['yhat_lower'][-output_index:], forecast_amount['yhat_upper'][-output_index:], color='grey', alpha=0.2, label=f'{int(interval_width*100)}%的置信区间')
     ax.set_xlabel('销售日期')
     ax.set_ylabel('销量')
-    ax.set_title('茄类预测期第一次订货量时序对比图')
+    ax.set_title(f'{_}预测期第一次订货量时序对比图')
     ax.legend()
     plt.savefig(output_path + f"\{_}_forecast.svg", dpi=300, bbox_inches='tight')
     plt.show()
@@ -399,7 +402,7 @@ for _ in account_commodity['sm_sort_name'].unique():
     plt.show()
     fig1.savefig(output_path + f"\{_}_fit_unit_cost.svg", dpi=300, bbox_inches='tight')
     fig2.savefig(output_path + f"\{_}_fit_unit_cost_components.svg", dpi=300, bbox_inches='tight')
-    forecast_cost.to_excel(output_path + f"\{_}单位成本时序分解.xlsx", index=False, encoding='utf-8-sig', sheet_name=f'{_}预测单位成本')
+    forecast_cost.to_excel(output_path + f"\{_}_单位成本时序分解.xlsx", index=False, encoding='utf-8-sig', sheet_name=f'{_}预测单位成本')
 
 
     forecast = forecast_price[['ds', 'yhat']][-periods:]
@@ -448,9 +451,9 @@ for _ in account_commodity['sm_sort_name'].unique():
     ax.fill_between(sm_qielei_all['销售日期'][-output_index:], forecast_price['yhat_lower'][-output_index:] / forecast['预测单价'], forecast_price['yhat_upper'][-output_index:] / forecast['预测单价'], color='grey', alpha=0.2, label=f'{int(interval_width*100)}%的置信区间')
     ax.set_xlabel('销售日期')
     ax.set_ylabel('销量')
-    ax.set_title('茄类预测期加载销量时间效应的最终订货量对比图')
+    ax.set_title(f'{_}预测期加载销量时间效应的最终订货量对比图')
     ax.legend()
     plt.savefig(output_path + f"\{_}_qielei_forecast_final.svg", dpi=300, bbox_inches='tight')
     plt.show()
 
-    print('question_1运行完毕！')
+    print('question_2运行完毕！')
