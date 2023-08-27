@@ -34,7 +34,8 @@ output_index = 7  # 将前output_index个预测结果作为最终结果
 extend_power = 1/5 # 数据扩增的幂次
 interval_width = 0.95 # prophet的置信区间宽度
 last_day = last_day # 训练集的最后一天+1，即预测集的第一天
-mcmc_samples = 0 # mcmc采样次数
+mcmc_samples = 100 # mcmc采样次数
+distributions = ['cauchy', 'chi2', 'expon', 'exponpow', 'gamma', 'lognorm', 'norm', 'powerlaw', 'irayleigh', 'uniform']
 
 pd.set_option('display.max_columns', None)
 pd.set_option('display.max_rows', periods)
@@ -275,16 +276,15 @@ for _ in account_commodity['sm_sort_name'].unique():
 
 
     # 观察sm_qielei_amt_ext的分布情况
-    f = fitter.Fitter(sm_qielei_amt_ext, distributions=['cauchy', 'chi2', 'expon', 'exponpow', 'gamma', 'lognorm', 'norm', 'powerlaw', 'irayleigh', 'uniform'], timeout=10)
+    f = fitter.Fitter(sm_qielei_amt_ext, distributions=distributions, timeout=10)
     f.fit()
-    comparison_of_distributions_qielei = f.summary(Nbest=5)
+    comparison_of_distributions_qielei = f.summary(Nbest=len(distributions))
     print(f'\n{comparison_of_distributions_qielei.round(4)}\n')
     comparison_of_distributions_qielei = comparison_of_distributions_qielei.round(4)
     comparison_of_distributions_qielei.to_excel(output_path + f"\{_}_comparison_of_distributions.xlsx", sheet_name=f'{_}_comparison of distributions')
 
     name = list(f.get_best().keys())[0]
     print(f'best distribution: {name}''\n')
-    f.plot_pdf(Nbest=5)
     figure = plt.gcf()  # 获取当前图像
     plt.xlabel(f'用于拟合分布的，{_}数据扩增后的历史销量')
     plt.ylabel('Probability')
@@ -456,4 +456,4 @@ for _ in account_commodity['sm_sort_name'].unique():
     plt.savefig(output_path + f"\{_}_qielei_forecast_final.svg", dpi=300, bbox_inches='tight')
     plt.show()
 
-    print('question_2运行完毕！')
+    print('question_2运行完毕！', '\n\n\n')
