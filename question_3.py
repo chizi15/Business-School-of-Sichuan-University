@@ -1,19 +1,24 @@
-# -*- coding: utf-8 -*-
-from prophet import Prophet
+"""
+解法概述：
+1. 将最近一段时间有销售的单品筛选出，按平均销量降序排序，取出满足最小陈列量要求的单品集合A。
+2. 对集合A中单品使用使用qiestion_1.py中流程得到相关性筛选排序合并后的分组集合B。
+3. 使用集合B中的分组，筛选出满足单品数条件的组合方式，计算各组合方式的平均毛利额，取出其值最大的组合C。
+4. 对该组合C使用question_2.py中流程得到各组的最优订购量，再将最优订购量分解到各单品。
+5. 使用question_2.py中流程得到各单品的最优售价，使集合B的毛利率最大。
+"""
+
 import pandas as pd
 import numpy as np
-from scipy import stats
-import chinese_calendar
 import fitter
-import math
 import matplotlib.pyplot as plt
 import seaborn as sns
-import sys, os
-base_path = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))  # 两层dirname才能得到上上级目录
-# 添加其他文件夹路径的脚本到系统临时路径，不会保留在环境变量中，每次重新append即可
-# sys.path.append("D:\Work info\Repositories")
-sys.path.append(base_path)  # regression_evaluation_main所在文件夹的绝对路径
-from regression_evaluation_main import regression_evaluation_def as ref
+from prophet import Prophet
+from scipy import stats
+import chinese_calendar
+import matplotlib.pyplot as plt
+import os
+from data_output import output_path_self_use
+
 pd.set_option('display.max_columns', None)
 pd.set_option('display.max_rows', 8)
 plt.rcParams['font.sans-serif']=['SimHei']  # 用来正常显示中文标签
@@ -31,347 +36,223 @@ print('Imported packages successfully.', '\n')
 
 
 # 设置全局参数
-periods = 7 # 预测步数
+periods = 1 # 预测步数
+output_index = 1  # 将前output_index个预测结果作为最终结果
 extend_power = 1/5 # 数据扩增的幂次
 interval_width = 0.95 # prophet的置信区间宽度
-mcmc_samples = 0 # prophet的mcmc采样次数
+first_day = '2023-06-24'
+last_day = '2023-06-30'
+amount_min = 2.5 # 最小陈列量
+code_num_max = 30
+code_num_min = 24
+mcmc_samples = 0 # mcmc采样次数
+coef = round(1/3, 2) # 相关系数排序分组时的阈值
+corr_neg = -0.2 # 销量与售价的负相关性阈值
+
+distributions = ['cauchy', 'chi2', 'expon', 'exponpow', 'gamma', 'lognorm', 'norm', 'powerlaw', 'irayleigh', 'uniform']
+input_path = output_path_self_use + "\\"
+output_path = r"D:\Work info\SCU\MathModeling\2023\data\processed\question_3" + "\\"
+if not os.path.exists(output_path):
+    os.makedirs(output_path)
 
 
-# read and summerize data
-running = pd.read_csv(r"D:\Work info\SCU\MathModeling\2023\data\ZNEW_DESENS\ZNEW_DESENS\sampledata\running.csv")
-print(f"running['type']的取值: {running['type'].unique()}", '\n')
-print(f"'退货'的最大取值: {running[running['type'] == '退货']['amount'].max()}", '\n', "退货的最大值为负数，说明退货的amount是负数, 则'退货'记录可与'单品销售'记录相加，得到每日实际销量", '\n')
-run_apple = running[running['class'] == '水果课']  # 水果课中只有苹果
-run_apple['busdate'] = pd.to_datetime(run_apple['selldate'], infer_datetime_format=True)
-run_apple.sort_values(by=['busdate', 'selltime'], inplace=True)
-run_apple = run_apple.groupby(['busdate', 'code'])[['amount', 'sum_sell', 'sum_disc']].sum().reset_index()
-account_apple = run_apple.groupby(['busdate'])[['amount', 'sum_sell', 'sum_disc']].mean().reset_index()
-account_apple.rename(columns={'sum_sell': 'sum_price'}, inplace=True)
-account_apple.drop(columns=['sum_disc'], inplace=True)
+account = pd.read_csv(input_path + "account.csv")
+account['busdate'] = pd.to_datetime(account['busdate'])
+account.sort_values(by=['busdate'], inplace=True)
+account['code'] = account['code'].astype('str')
+acct_grup = account.groupby(["organ", "code"])
+print(f'\naccount\n\nshape: {account.shape}\n\ndtypes:\n{account.dtypes}\n\nisnull-columns:\n{account.isnull().any()}'
+      f'\n\nisnull-rows:\n{sum(account.isnull().T.any())}\n\nnumber of commodities:\n{len(acct_grup)}\n')
+print(f"account['sum_disc'].mean(): {account['sum_disc'].mean()}")
+print(f"account['sum_price'].mean(): {account['sum_price'].mean()}", '\n')
+account.drop(columns=['sum_disc'], inplace=True)
 
-account = pd.read_csv(r"D:\Work info\SCU\MathModeling\2023\data\ZNEW_DESENS\ZNEW_DESENS\sampledata\account.csv")
-account['busdate'] = pd.to_datetime(account['busdate'], infer_datetime_format=True)
-account_seg = account[account['class'] == '水果课']
-account_seg.sort_values(by=['busdate'], inplace=True)
-account_seg = account_seg.groupby(['busdate'])[['sum_cost']].mean().reset_index()
+# 对acount按code分组，筛选出当busdate在first_day与last_day之间时，amount均大于0的code
+account_1 = account[account['busdate'].between(first_day, last_day)]
+acct_grup_1 = account_1.groupby(["organ", "code"])
+acct_grup_1 = acct_grup_1.filter(lambda x: x['amount'].min() > 0)
+print(f"number of commodities after date filtering: {len(acct_grup_1['code'].unique())}", '\n')
+# 计算acct_grup_1中每个code的平均销量，按降序排序，取出满足最小陈列量amount_min要求的code集合
+acct_grup_1 = acct_grup_1.groupby(["code"]).mean().sort_values(by=['amount'], ascending=False).reset_index()
+acct_grup_1 = acct_grup_1[acct_grup_1['amount'] >= amount_min]
+print(f"number of commodities after amount filtering: {len(acct_grup_1['code'].unique())}", '\n')
 
-account_apple = pd.merge(account_apple, account_seg, on='busdate', how='left')
-account_apple.to_excel(r"D:\Work info\SCU\MathModeling\2023\data\processed\question_3\results\account_apple_processed.xlsx", index=False, sheet_name='流水表经过缺货填补，并按日聚合，再和账表合并sum_cost后的苹果日销售数据')
+account = account[account['code'].isin(acct_grup_1['code'].unique())]
+account['price'] = account['sum_price'] / account['amount']
+account['cost_price'] = account['sum_cost'] / account['amount']
+account['profit'] = (account['price'] - account['cost_price']) / account['price']
+account = account.dropna()
+account = account[account['profit'] > 0]
+account.sort_values(by=['code', 'busdate'], inplace=True)
+print(f'去除空值与非正毛利率的样本后，有{account["code"].nunique()}个codes', '\n')
+
+# 将account中各个code的平均profit按降序排序
+account_mean = account.groupby(["code"]).mean().reset_index()
+account_mean['amount*profit'] = account_mean['amount'] * account_mean['profit']
+acct_grup = account_mean.sort_values(by=['amount*profit'], ascending=False).reset_index()
+# 从code_num_max到code_num_min中随机选择一个数
+code_num = np.random.randint(code_num_min, code_num_max+1)
+acct_grup = acct_grup.iloc[:code_num, :]
+
+account = account[account['code'].isin(acct_grup['code'].unique())]
 
 
-# 对account_apple中数值型变量的列：amount，sum_cost和sum_price画时序图
-account_apple_num = account_apple.select_dtypes(include=np.number)
-for col in account_apple_num:
-    sns.lineplot(x='busdate', y=col, data=account_apple)
-    plt.xticks(rotation=45)
-    plt.xlabel('busdate')
-    plt.ylabel(col)
-    plt.title('Time Series Graph')
+commodity = pd.read_csv(input_path + "commodity.csv")
+# 将commodity所有字段转为str类型
+commodity = commodity.astype('str')
+acct_com = pd.merge(account, commodity, on=['class', 'code'], how='left')
+# 若acct_com中name列中的元素，存在(k/g)，则将其替换为空字符串
+acct_com['name'] = acct_com['name'].apply(lambda x: x.replace('(k/g)', ''))
+
+# 绘制各个单品的平均销量时序图，及其分布比较，并得到最优分布
+for name, data in acct_com.groupby(['name']):
+    # 在acct_com中，对各个sm_sort分别画时间序列图，横坐标是busdate，纵坐标是amount
+    fig = plt.figure(figsize=(20, 10))
+    plt.plot(data['busdate'], data['amount'])
+    plt.title(f'{name}')
     plt.show()
+    fig.savefig(output_path + "单品_%s_销量时序.svg" % name)  # 按单品聚合后的平均销量和平均价格
+    fig.clear()
 
-# 输出这三条时序图中，非空数据的起止日期，用循环实现
-for col in account_apple_num:
-    print(f'{col}非空数据的起止日期为：{account_apple[account_apple[col].notnull()]["busdate"].min()}到{account_apple[account_apple[col].notnull()]["busdate"].max()}', '\n')
+    # 对销量序列进行分布拟合比较
+    f = fitter.Fitter(data['amount'], distributions=distributions, timeout=10)
+    f.fit()
+    comparison_of_distributions_qielei = f.summary(Nbest=len(distributions))
+    print(f'\n{comparison_of_distributions_qielei.round(4)}\n')
+    comparison_of_distributions_qielei = comparison_of_distributions_qielei.round(4)
+    comparison_of_distributions_qielei.to_excel(output_path + f"单品_{name}_comparison_of_distributions.xlsx", sheet_name=f'{name}_comparison of distributions')
 
-# 断言account_apple中数值型字段的起止日期相同
-assert (account_apple[account_apple['amount'].notnull()]["busdate"].min() == account_apple[account_apple['sum_cost'].notnull()]["busdate"].min() == account_apple[account_apple['sum_price'].notnull()]["busdate"].min()), "三个字段非空数据的开始日期不相同"
-assert (account_apple[account_apple['amount'].notnull()]["busdate"].max() == account_apple[account_apple['sum_cost'].notnull()]["busdate"].max() == account_apple[account_apple['sum_price'].notnull()]["busdate"].max()), "三个字段非空数据的结束日期不相同"
+    # 给figure添加label和title，并保存输出对比分布图
+    name_dist = list(f.get_best().keys())[0]
+    print(f'best distribution: {name_dist}''\n')
+    figure = plt.gcf()  # 获取当前图像
+    plt.xlabel(f'{name}_销量分布拟合对比')
+    plt.ylabel('Probability')
+    plt.title(f'{name}_comparison of distributions')
+    plt.show()
+    figure.savefig(output_path + f"单品_{name}_comparison of distributions.svg")
+    figure.clear()  # 先画图plt.show，再释放内存
 
-
-account_apple_train = account_apple[:-periods]
-# 用prophet获取训练集上的星期效应系数、节日效应系数和年季节性效应系数
-apple_prophet_amount = account_apple_train[['busdate', 'amount']].rename(columns={'busdate': 'ds', 'amount': 'y'})
-m_amount = Prophet(yearly_seasonality=True, weekly_seasonality=True, seasonality_mode='multiplicative', holidays_prior_scale=10, seasonality_prior_scale=10, mcmc_samples=mcmc_samples, interval_width=interval_width)
-m_amount.add_country_holidays(country_name='CN')
-m_amount.fit(apple_prophet_amount)
-future_amount = m_amount.make_future_dataframe(periods=periods)
-forecast_amount = m_amount.predict(future_amount)
-fig1 = m_amount.plot(forecast_amount)
-plt.show()
-fig2 = m_amount.plot_components(forecast_amount)
-plt.show()
-fig1.savefig(r"D:\Work info\SCU\MathModeling\2023\data\processed\question_3\results\apple_fit_amount.svg", dpi=300, bbox_inches='tight')
-fig2.savefig(r"D:\Work info\SCU\MathModeling\2023\data\processed\question_3\results\apple_fit_amount_components.svg", dpi=300, bbox_inches='tight')
-
-holiday_effect = forecast_amount[['ds', 'holidays', 'holidays_lower', 'holidays_upper']]
-weekly_effect = forecast_amount[['ds', 'weekly', 'weekly_lower', 'weekly_upper']]
-yearly_effect = forecast_amount[['ds', 'yearly', 'yearly_lower', 'yearly_upper']]
-multiplicative_terms = forecast_amount[['ds', 'multiplicative_terms', 'multiplicative_terms_lower', 'multiplicative_terms_upper']]
-
-# 根据apple_prophet_amount的ds列，将holiday_effect, weekly_effect, yearly_effect, multiplicative_terms左连接合并到apple_prophet_amount中
-apple_prophet_amount = pd.merge(apple_prophet_amount, holiday_effect, on='ds', how='left')
-apple_prophet_amount = pd.merge(apple_prophet_amount, weekly_effect, on='ds', how='left')
-apple_prophet_amount = pd.merge(apple_prophet_amount, yearly_effect, on='ds', how='left')
-apple_prophet_amount = pd.merge(apple_prophet_amount, multiplicative_terms, on='ds', how='left')
-apple_prophet_amount = apple_prophet_amount.rename(columns={'holidays': 'holiday_effect', 'weekly': 'weekly_effect', 'yearly': 'yearly_effect', 'multiplicative_terms': 'total_effect'})
-print(apple_prophet_amount.isnull().sum(), '\n')
-
-# 在apple_prophet_amount中，增加中国日历的星期和节假日的列，列名分别为weekday和holiday
-apple_prophet_amount['weekday'] = apple_prophet_amount['ds'].dt.weekday # 0-6, Monday is 0
-# 根据日期获取中国节日名称，使用chinese_calendar库
-apple_prophet_amount['holiday'] = apple_prophet_amount['ds'].apply(lambda x: chinese_calendar.get_holiday_detail(x)[1] if chinese_calendar.get_holiday_detail(x)[0] else None)
-
-# 保存输出带有时间效应和星期、节假日标签的苹果销量样本
-apple_prophet_amount.to_excel(r"D:\Work info\SCU\MathModeling\2023\data\processed\question_3\results\apple_prophet_amount_with_effect.xlsx", index=False, sheet_name='用苹果历史销量计算出的时间效应，合并到训练集中')
-
-# 验证prophet分解出的各个分项的计算公式
-print(f"在乘法模式下，trend*(1+multiplicative_terms)=yhat, 即：sum(forecast['trend']*(1+forecast['multiplicative_terms'])-forecast['yhat']) = {sum(forecast_amount['trend']*(1+forecast_amount['multiplicative_terms'])-forecast_amount['yhat'])}", '\n')
-print(f"sum(forecast['multiplicative_terms']-(forecast['holidays']+forecast['weekly']+forecast['yearly'])) = {sum(forecast_amount['multiplicative_terms']-(forecast_amount['holidays']+forecast_amount['weekly']+forecast_amount['yearly']))}", '\n')
+    # 绘制并保存输出最优分布图
+    figure = plt.gcf()  # 获取当前图像
+    plt.plot(f.x, f.y, 'b-.', label='f.y')
+    plt.plot(f.x, f.fitted_pdf[name_dist], 'r-', label="f.fitted_pdf")
+    plt.xlabel(f'{name}_销量最优分布拟合')
+    plt.ylabel('Probability')
+    plt.title(f'best distribution: {name_dist}')
+    plt.legend()
+    plt.show()
+    figure.savefig(output_path + f"单品_{name}_best distribution.svg")
+    figure.clear()
 
 
-account_apple_train['amt_no_effect'] = account_apple_train['amount'].values / (1+apple_prophet_amount['total_effect']).values
+# 对数变换增强正态性，以加强对相关系数计算假设条件的满足程度
+acct_com['amount'] = acct_com['amount'].apply(lambda x: np.log1p(x))
+acct_com['price'] = acct_com['price'].apply(lambda x: np.log1p(x))
+# 筛选销量与价格负相关性强的单品
+typeA = []
+typeB = []
+for code, data in acct_com.groupby(['name']):
+    if len(data)>5:
+        r = stats.spearmanr(data['amount'], data['price']).correlation
+        if r < corr_neg:
+            typeA.append(code)
+        else:
+            typeB.append(code)
+# 对sale_sm['amount']和price做np.log1p的逆变换，使数据回到原来的尺度
+acct_com['amount'] = acct_com['amount'].apply(lambda x: np.expm1(x))
+acct_com['price'] = acct_com['price'].apply(lambda x: np.expm1(x))
+sale_sm_a = acct_com[acct_com['name'].isin(typeA)]
+sale_sm_b = acct_com[acct_com['name'].isin(typeB)]
+print(f'销量与价格的负相关性强(小于{corr_neg})的单品一共有{sale_sm_a["name"].nunique()}个')
+print(f'销量与价格的负相关性弱(大于等于{corr_neg})的单品一共有{sale_sm_b["name"].nunique()}个', '\n')
+sale_sm_a.to_excel(output_path + f"单品_销售数据_销量与价格的负相关性强(小于{corr_neg})的一组.xlsx")
+sale_sm_b.to_excel(output_path + f"单品_销售数据_销量与价格的负相关性弱(大于等于{corr_neg})的一组.xlsx")
 
-fig = plt.figure()
-plt.plot(account_apple_train['busdate'], account_apple_train['amount'], label='剔除时间效应前销量')
-plt.plot(account_apple_train['busdate'], account_apple_train['amt_no_effect'], label='剔除时间效应后销量')
-plt.xticks(rotation=45)
-plt.xlabel('销售日期')
-plt.ylabel('苹果销量')
-plt.title('剔除时间效应前后，苹果销量时序对比')
-plt.legend(loc='best')
-plt.show()
-fig.savefig(r"D:\Work info\SCU\MathModeling\2023\data\processed\question_3\results\剔除时间效应前后，苹果销量时序对比.svg", dpi=300, bbox_inches='tight')
+# 计算负相关性强的单品序列的相关系数并画热力图。
+# 先对df行转列
+sale_sm_a_t = pd.pivot(sale_sm_a, index="busdate", columns="name", values="amount")
+# 计算每列间的相关性
+sale_sm_a_coe = sale_sm_a_t.corr(method='pearson') # Compute pairwise correlation of columns, excluding NA/null values
+plt.figure(figsize=(20, 20))
+sns.heatmap(sale_sm_a_coe, annot=True, xticklabels=True, yticklabels=True)
+plt.savefig(output_path + "单品_销量与价格负相关性强的一组中，各个单品销量间的corr_heatmap.svg")
 
-# 计算剔除时间效应前后，苹果历史销量的描述性统计信息对比
-apple_train_amount_effect_compare = account_apple_train[['amount', 'amt_no_effect']].describe()
-print(apple_train_amount_effect_compare)
-apple_train_amount_effect_compare.to_excel(r"D:\Work info\SCU\MathModeling\2023\data\processed\question_3\results\apple_train_amount_effect_compare.xlsx", sheet_name='剔除时间效应前后，苹果历史销量的描述性统计信息对比')
+# 对typeA中单品按相关系数的排序进行分组
+# 选择相关性大于coef的组合
+groups = []
+idxs = sale_sm_a_coe.index.to_list()
+for idx, row in sale_sm_a_coe.iterrows():
+    group = row[row > coef].index.to_list()
+    groups.append(group)
+groups_ = []
+for group in groups:
+    diff_group = []
+    for idx in group:
+        if idx in idxs:
+            idxs.remove(idx)
+        else:
+            diff_group.append(idx)
+    group = set(group)-set(diff_group)
+    if group:
+        groups_.append(group)
+print(f'进行相关性排序，并以相关系数大于{round(coef, 2)}为条件进行分组后的结果:\n{groups_}\n')
 
-print(account_apple_train[['amount', 'amt_no_effect']].corr(), '\n')
+# 将groups_中的集合转换为列表
+groups_ = [list(group) for group in groups_]
+groups_.append(typeB)
+print(f'最终分组结果\n{groups_}')
+# 将groups_中的列表转换为df，索引为组号，列名为各个单品名
+groups_df = pd.DataFrame(pd.Series(groups_), columns=['name'])
+groups_df['group'] = groups_df.index+1
+# 改变列的顺序
+groups_df = groups_df[['group', 'name']]
+groups_df.to_excel(output_path + f"单品_相关性分组结果：以相关系数大于{coef}为条件.xlsx", index=False, sheet_name='最后一组是销量对价格不敏感的，前面若干组是销量对价格敏感的')
 
-# 对历史销量数据进行扩增，使更近的样本占更大的权重
-apple_train_amt_ext = ref.extendSample(account_apple_train['amt_no_effect'].values, max_weight=int(len(account_apple_train['amt_no_effect'].values)**(extend_power)))
+# 对groups_中的每个组，从acct_com中筛选出对应的数据，组成list_df
+list_df = [acct_com[acct_com['name'].isin(group)] for group in groups_]
+# 循环对list_df中每个df按busdate进行合并groupby，并求均值
+list_df_avg = [data.groupby(['busdate']).agg({'amount': 'mean', 'sum_price': 'mean', 'sum_cost': 'mean'}).reset_index() for data in list_df]
+# 对list_df_avg中每个df画时间序列图，横坐标是busdate，纵坐标是amount
+for i, data in enumerate(list_df_avg):
+    fig = plt.figure(figsize=(20, 10))
+    plt.plot(data['busdate'], data['amount'])
+    plt.title(f'{groups_[i]}')
+    plt.show()
+    fig.savefig(output_path + f"单品_{str(groups_[i]).replace('[', '(').replace(']', ')')}_按相关性分组合并后的销量时序.svg")  # 按单品聚合后的平均销量
+    fig.clear()
 
-# 绘制数据扩增前后，苹果历史销量的概率密度函数对比图
-fig, ax = plt.subplots(1, 1)
-sns.distplot(apple_train_amt_ext, ax=ax, label='extended')
-sns.distplot(account_apple_train['amt_no_effect'].values, ax=ax, label='original')
-ax.legend()
-plt.title('数据扩增前后，苹果历史销量的概率密度函数对比图')
-plt.show()
-fig.savefig(r"D:\Work info\SCU\MathModeling\2023\data\processed\question_1_2\数据扩增前后，历史销量的概率密度函数对比图.svg", dpi=300, bbox_inches='tight')
+    # 对销量序列进行分布拟合比较
+    f = fitter.Fitter(data['amount'], distributions=distributions, timeout=10)
+    f.fit()
+    comparison_of_distributions_qielei = f.summary(Nbest=len(distributions))
+    print(f'\n{comparison_of_distributions_qielei.round(4)}\n')
+    comparison_of_distributions_qielei = comparison_of_distributions_qielei.round(4)
+    # 将groups_[i]中的单品名转换为字符串，再替换异常符号，以便作为excel文件名和sheet_name表名
+    groups_[i] = str(groups_[i])
+    groups_[i] = groups_[i].replace('\'', '').replace('[', '(').replace(']', ')')
+    comparison_of_distributions_qielei.to_excel(output_path + f"单品_{groups_[i]}_comparison_of_distributions.xlsx", sheet_name=f'{groups_[i]}_comparison of distributions')
+    figure.clear()
 
-# 给出数据扩增前后，苹果历史销量的描述性统计信息对比
-apple_train_amt_ext_describe = pd.Series(apple_train_amt_ext, name='apple_train_amt_ext_describe').describe()
-apple_train_amt_describe = account_apple_train['amt_no_effect'].describe()
-apple_train_amt_ext_compare = pd.concat([apple_train_amt_describe, apple_train_amt_ext_describe], axis=1).rename(columns={'amt_no_effect': 'apple_train_amt_describe'})
-print(apple_train_amt_ext_compare, '\n')
-apple_train_amt_ext_compare.to_excel(r"D:\Work info\SCU\MathModeling\2023\data\processed\question_3\results\apple_train_amt_ext_compare.xlsx", sheet_name='数据扩增前后，苹果历史销量的描述性统计信息对比')
+    # 给figure添加label和title，并保存输出对比分布图
+    name_dist = list(f.get_best().keys())[0]
+    print(f'best distribution: {name_dist}''\n')
+    figure = plt.gcf()  # 获取当前图像
+    plt.xlabel(f'{groups_[i]}_销量分布拟合对比')
+    plt.ylabel('Probability')
+    plt.title(f'{groups_[i]}_comparison of distributions')
+    plt.show()
+    figure.savefig(output_path + f"单品_{groups_[i]}_comparison of distributions.svg")
+    figure.clear()  # 先画图plt.show，再释放内存
 
-# 对数据扩增前后，苹果历史销量进行正态性检验
-stat, p = stats.shapiro(apple_train_amt_ext)
-print('"apple_train_amt_ext" Shapiro-Wilk test statistic:', stat)
-print('"apple_train_amt_ext" Shapiro-Wilk test p-value:', p)
-# Perform Shapiro-Wilk test on amt_no_effect
-stat, p = stats.shapiro(account_apple_train["amt_no_effect"].values)
-print('"amt_no_effect" Shapiro-Wilk test statistic:', stat)
-print('"amt_no_effect" Shapiro-Wilk test p-value:', p, '\n')
-
-
-account_apple_train['price_daily_avg'] = account_apple_train['sum_price'] / account_apple_train['amount']
-account_apple_train['cost_daily_avg'] = account_apple_train['sum_cost'] / account_apple_train['amount']
-account_apple_train['profit_daily'] = (account_apple_train['price_daily_avg'] - account_apple_train['cost_daily_avg']) / account_apple_train['price_daily_avg']
-
-# 画account_apple_train['profit_daily']的概率密度函数
-fig, ax = plt.subplots(1, 1)
-sns.distplot(account_apple_train['profit_daily'].values, ax=ax)
-plt.title('苹果日均利润的概率密度函数')
-plt.show()
-
-profit_avg = (account_apple_train['profit_daily'].mean() + np.percentile(account_apple_train['profit_daily'], 50)) / 2
-
-f = fitter.Fitter(apple_train_amt_ext, distributions='gamma')
-f.fit()
-q_steady = stats.gamma.ppf(profit_avg, *f.fitted_param['gamma'])
-print(f'拟合分布的最优参数是: \n {f.fitted_param["gamma"]}', '\n')
-print(f'q_steady = {q_steady}', '\n')
-# if q_steady 为空，取销量均值
-if np.isnan(q_steady):
-    q_steady = np.mean(account_apple_train['amt_no_effect'])
-    print(f'q_steady = {q_steady}', '\n')
-
-# 观察apple_train_amt_ext的分布情况
-f = fitter.Fitter(apple_train_amt_ext, distributions=['cauchy', 'chi2', 'expon', 'exponpow', 'gamma', 'lognorm', 'norm', 'powerlaw', 'irayleigh', 'uniform'], timeout=10)
-f.fit()
-comparison_of_distributions_apple = f.summary(Nbest=5)
-print(f'\n{comparison_of_distributions_apple}\n')
-comparison_of_distributions_apple.to_excel(r"D:\Work info\SCU\MathModeling\2023\data\processed\question_3\results\comparison_of_distributions_apple.xlsx", sheet_name='comparison of apple distributions')
-
-name = list(f.get_best().keys())[0]
-print(f'best distribution: {name}''\n')
-f.plot_pdf(Nbest=5)
-figure = plt.gcf()  # 获取当前图像
-plt.xlabel('用于拟合分布的，苹果数据扩增后的历史销量')
-plt.ylabel('Probability')
-plt.title('comparison of apple distributions')
-plt.show()
-figure.savefig(r"D:\Work info\SCU\MathModeling\2023\data\processed\question_3\results\comparison of distributions_apple.svg")
-figure.clear()  # 先画图plt.show，再释放内存
-
-figure = plt.gcf()  # 获取当前图像
-plt.plot(f.x, f.y, 'b-.', label='f.y')
-plt.plot(f.x, f.fitted_pdf[name], 'r-', label="f.fitted_pdf")
-plt.xlabel('用于拟合分布的，茄类数据扩增后的历史销量')
-plt.ylabel('Probability')
-plt.title(f'best distribution: {name}')
-plt.legend()
-plt.show()
-figure.savefig(r"D:\Work info\SCU\MathModeling\2023\data\processed\question_3\results\best distribution_apple.svg")
-figure.clear()
-
-
-# 将时间效应加载到q_steady上，得到预测期的最优订货量q_star
-train_set = apple_prophet_amount[['ds', 'y', 'holiday_effect', 'weekly_effect', 'yearly_effect', 'holiday', 'weekday']]
-all_set = pd.merge(future_amount, train_set, on='ds', how='left')
-all_set['weekday'][-periods:] = all_set['ds'][-periods:].dt.weekday # 0-6, Monday is 0
-all_set['holiday'][-periods:] = all_set['ds'][-periods:].apply(lambda x: chinese_calendar.get_holiday_detail(x)[1] if chinese_calendar.get_holiday_detail(x)[0] else None)
-# 计算all_set[:-periods]中，weekly_effect字段关于weekday字段每个取值的平均数，并保留ds字段
-weekly_effect_avg = all_set[:-periods].groupby(['weekday'])['weekly_effect'].mean()
-# 将all_set和weekly_effect_avg按weekday字段进行左连接，只保留一个weekday字段
-all_set = pd.merge(all_set, weekly_effect_avg, on='weekday', how='left', suffixes=('', '_avg')).drop(columns=['weekly_effect'])
-# 对预测期的节假日系数赋值
-if len(set(all_set['holiday'][-periods:])) == 1:
-    all_set['holiday_effect'][-periods:] = 0
-else:
-    raise ValueError('预测期中，存在多个节假日，需要手动设置holiday_effect')
-# 提取all_set['ds']中的年、月、日
-all_set['year'] = all_set['ds'].dt.year
-all_set['month'] = all_set['ds'].dt.month
-all_set['day'] = all_set['ds'].dt.day
-# 取all_set[-periods:]和all_set[:-periods]中，月、日相同，但年不同的样本，计算年效应
-yearly_effect_avg = all_set[:-periods].groupby(['month', 'day'])['yearly_effect'].mean().reset_index()
-all_set = pd.merge(all_set, yearly_effect_avg, on=['month', 'day'], how='left', suffixes=('', '_avg')).drop(columns=['yearly_effect'])
-# 计算q_star
-q_star = q_steady * (1 + (all_set['holiday_effect'] + all_set['weekly_effect_avg'] + all_set['yearly_effect_avg'])[-periods:])
-print('q_star = ', '\n', f'{q_star}', '\n')
-all_set['y'][-periods:] = q_star
-all_set['y'][:-periods] = forecast_amount['yhat'][:-periods]
-all_set.drop(columns=['year', 'month', 'day'], inplace=True)
-all_set.rename(columns={'y': '预测销量', 'ds': '销售日期'}, inplace=True)
-all_set['训练集平均毛利率'] = profit_avg
-all_set['第一次计算的平稳订货量'] = q_steady
-all_set.to_excel(r"D:\Work info\SCU\MathModeling\2023\data\processed\question_3\results\apple_all_set.xlsx", index=False, encoding='utf-8-sig', sheet_name='苹果在全集上的第一次预测订货量及时间效应系数')
-
-
-# 使用ref评估最后一周，即预测期的指标
-apple_all = account_apple[['busdate', 'amount']].rename(columns={'busdate': '销售日期', 'amount': '实际销量'})
-apple_all = pd.merge(apple_all, all_set, on='销售日期', how='left')
-
-res = ref.regression_evaluation_single(y_true=apple_all['实际销量'][-periods:].values, y_pred=apple_all['预测销量'][-periods:].values)
-accu_sin = ref.accuracy_single(y_true=apple_all['实际销量'][-periods:].values, y_pred=apple_all['预测销量'][-periods:].values)
-metrics_values = [accu_sin] + list(res[:-2])
-metrics_names = ['AA', 
- 'MAPE', 'SMAPE', 'RMSPE', 'MTD_p2',
- 'EMLAE', 'MALE', 'MAE', 'RMSE', 'MedAE', 'MTD_p1',
- 'MSE', 'MSLE',
- 'VAR', 'R2', 'PR', 'SR', 'KT', 'WT', 'MGC']
-metrics = pd.Series(data=metrics_values, index=metrics_names, name='评估指标值')
-metrics.to_excel(r"D:\Work info\SCU\MathModeling\2023\data\processed\question_3\results\apple_metrics.xlsx", index=True, encoding='utf-8-sig', sheet_name='第一次计算订货量时，20种评估指标的取值')
-print(f'metrics: \n {metrics}', '\n')
-
-# 作图比较实际销量和预测销量，以及预测销量的置信区间，并输出保存图片
-fig = plt.figure(figsize=(12, 6))
-ax = fig.add_subplot(111)
-ax.plot(apple_all['销售日期'][-periods:], apple_all['实际销量'][-periods:], label='实际销量')
-ax.plot(apple_all['销售日期'][-periods:], apple_all['预测销量'][-periods:], label='预测销量')
-ax.fill_between(apple_all['销售日期'][-periods:], forecast_amount['yhat_lower'][-periods:], forecast_amount['yhat_upper'][-periods:], color='grey', alpha=0.2, label=f'{int(interval_width*100)}%的置信区间')
-ax.set_xlabel('销售日期')
-ax.set_ylabel('销量')
-ax.set_title('苹果预测期第一次订货量时序对比图')
-ax.legend()
-plt.savefig(r"D:\Work info\SCU\MathModeling\2023\data\processed\question_3\results\apple_forecast.svg", dpi=300, bbox_inches='tight')
-plt.show()
-
-
-# question_3
-apple_prophet_price = account_apple_train[['busdate', 'sum_price']].rename(columns={'busdate': 'ds', 'sum_price': 'y'})
-m_price = Prophet(seasonality_mode='multiplicative', holidays_prior_scale=10, seasonality_prior_scale=10, mcmc_samples=mcmc_samples, interval_width=interval_width)
-m_price.add_country_holidays(country_name='CN')
-m_price.add_seasonality(name='weekly', period=7, fourier_order=10, prior_scale=10)
-m_price.add_seasonality(name='yearly', period=365, fourier_order=3, prior_scale=10)
-m_price.add_seasonality(name='monthly', period=30.5, fourier_order=2, prior_scale=1)
-m_price.add_seasonality(name='quarterly', period=91.25, fourier_order=2, prior_scale=1)
-m_price.fit(apple_prophet_price)
-future_price = m_price.make_future_dataframe(periods=periods)
-forecast_price = m_price.predict(future_price)
-fig1 = m_price.plot(forecast_price)
-plt.show()
-fig2 = m_price.plot_components(forecast_price)
-plt.show()
-fig1.savefig(r"D:\Work info\SCU\MathModeling\2023\data\processed\question_3\results\apple_fit_price.svg", dpi=300, bbox_inches='tight')
-fig2.savefig(r"D:\Work info\SCU\MathModeling\2023\data\processed\question_3\results\apple_fit_price_components.svg", dpi=300, bbox_inches='tight')
-
-account_apple_train['cost'] = account_apple_train['sum_cost'] / account_apple_train['amount']
-apple_prophet_cost = account_apple_train[['busdate', 'cost']].rename(columns={'busdate': 'ds', 'cost': 'y'})
-# # 用中位数为均值，标准差为范围，识别并替换apple_prophet_cost中异常值
-# apple_prophet_cost.loc[apple_prophet_cost['y'] > apple_prophet_cost['y'].median() + 3 * apple_prophet_cost['y'].std(), 'y'] = apple_prophet_cost['y'].median() + 3 * apple_prophet_cost['y'].std()
-# apple_prophet_cost.loc[apple_prophet_cost['y'] < apple_prophet_cost['y'].median() - 3 * apple_prophet_cost['y'].std(), 'y'] = apple_prophet_cost['y'].median() - 3 * apple_prophet_cost['y'].std()
-# 用中位数为均值，分位距为范围，识别并替换apple_prophet_cost中异常值
-apple_prophet_cost.loc[apple_prophet_cost['y'] > apple_prophet_cost['y'].quantile(0.75) + 1.5 * (apple_prophet_cost['y'].quantile(0.75) - apple_prophet_cost['y'].quantile(0.25)), 'y'] = apple_prophet_cost['y'].quantile(0.75) + 1.5 * (apple_prophet_cost['y'].quantile(0.75) - apple_prophet_cost['y'].quantile(0.25))
-apple_prophet_cost.loc[apple_prophet_cost['y'] < apple_prophet_cost['y'].quantile(0.25) - 1.5 * (apple_prophet_cost['y'].quantile(0.75) - apple_prophet_cost['y'].quantile(0.25)), 'y'] = apple_prophet_cost['y'].quantile(0.25) - 1.5 * (apple_prophet_cost['y'].quantile(0.75) - apple_prophet_cost['y'].quantile(0.25))
-
-# 对成本金额进行预测建模，用加法模型波动更小
-m_cost = Prophet(yearly_seasonality=True, weekly_seasonality=True, seasonality_mode='additive', holidays_prior_scale=10, seasonality_prior_scale=10, mcmc_samples=mcmc_samples, interval_width=interval_width)
-m_cost.add_country_holidays(country_name='CN')
-m_cost.fit(apple_prophet_cost)
-future_cost = m_cost.make_future_dataframe(periods=periods)
-forecast_cost = m_cost.predict(future_cost)
-fig1 = m_cost.plot(forecast_cost)
-plt.show()
-fig2 = m_cost.plot_components(forecast_cost)
-plt.show()
-fig1.savefig(r"D:\Work info\SCU\MathModeling\2023\data\processed\question_3\results\apple_fit_cost.svg", dpi=300, bbox_inches='tight')
-fig2.savefig(r"D:\Work info\SCU\MathModeling\2023\data\processed\question_3\results\apple_fit_cost_components.svg", dpi=300, bbox_inches='tight')
-
-forecast = forecast_price[['ds', 'yhat']][-periods:]
-forecast['price'] = forecast['yhat'] / q_star
-forecast['cost'] = forecast_cost['yhat'][-periods:]
-forecast['profit'] = (forecast['price'] - forecast['cost']) / forecast['price']
-profit_mean = forecast['profit'].mean()
-
-f_star = fitter.Fitter(apple_train_amt_ext, distributions='gamma')
-f_star.fit()
-print(f'拟合分布的最优参数是: \n {f_star.fitted_param["gamma"]}', '\n')
-q_steady_star = []
-for i in range(len(forecast['profit'])):
-    q = stats.gamma.ppf(forecast['profit'].values[i], *f_star.fitted_param['gamma'])
-    if math.isnan(q):
-        print(f"math.isnan(q): {math.isnan(q)}")
-        q_steady_star.append((forecast_amount['yhat'][-periods:].mean() + np.percentile(forecast_amount['yhat'][-periods:], 50)) / 2)
-    else:
-        q_steady_star.append(stats.gamma.ppf(forecast['profit'].values[i], *f_star.fitted_param['gamma']))
-q_steady_star = np.array(q_steady_star)
-print(f'q_steady_star = {q_steady_star}', '\n')
-
-all_set['total_effect'] = all_set[['holiday_effect', 'weekly_effect_avg', 'yearly_effect_avg']].sum(axis=1)
-q_star_new = q_steady_star * (1 + all_set['total_effect'][-periods:])
-print(f'q_star_new = \n {q_star_new}', '\n')
-forecast['加载毛利率时间效应的第二次报童订货量'] = q_steady_star
-forecast['q_star_new'] = q_star_new
-forecast.rename(columns={'ds': '销售日期', 'yhat': '预测金额', 'price': '预测单价', 'cost': '预测成本单价', 'profit': '预测毛利率', 'q_star_new': '加载销量时间效应的最终订货量'}, inplace=True)
-# 将forecast中预测毛利率小于0的元素替换为其他预测毛利率的均值
-forecast['预测毛利率'] = forecast['预测毛利率'].apply(lambda x: profit_mean if x < 0 else x)
-forecast['预测成本单价'] = forecast['预测单价'] - forecast['预测毛利率'] * forecast['预测单价']
-forecast.to_excel(r"D:\Work info\SCU\MathModeling\2023\data\processed\question_3\results\question_3_final_apple_forecast.xlsx", index=False, encoding='utf-8-sig', sheet_name='问题3最终结果：苹果在预测期每日的预测销售额、预测单价、预测成本单价、预测毛利率、加载毛利率时间效应的第二次报童订货量和加载销量时间效应的最终订货量')
-
-# 评估指标
-res_new = ref.regression_evaluation_single(y_true=apple_all['实际销量'][-periods:].values, y_pred=forecast['加载销量时间效应的最终订货量'][-periods:].values)
-accu_sin_new = ref.accuracy_single(y_true=apple_all['实际销量'][-periods:].values, y_pred=forecast['加载销量时间效应的最终订货量'][-periods:].values)
-metrics_values_new = [accu_sin_new] + list(res_new[:-2])
-metrics_new = pd.Series(data=metrics_values_new, index=metrics_names, name='新评估指标值')
-metrics_new.to_excel(r"D:\Work info\SCU\MathModeling\2023\data\processed\question_3\results\apple_metrics_final.xlsx", index=True, encoding='utf-8-sig', sheet_name='加载销量时间效应的最终订货量的评估指标值')
-print(f'metrics_new: \n {metrics_new}', '\n')
-
-fig = plt.figure(figsize=(12, 6))
-ax = fig.add_subplot(111)
-ax.plot(apple_all['销售日期'][-periods:], apple_all['实际销量'][-periods:], label='实际销量')
-ax.plot(forecast['销售日期'][-periods:], forecast['加载销量时间效应的最终订货量'][-periods:], label='加载销量时间效应的最终订货量')
-ax.fill_between(apple_all['销售日期'][-periods:], forecast_price['yhat_lower'][-periods:] / forecast['预测单价'], forecast_price['yhat_upper'][-periods:] / forecast['预测单价'], color='grey', alpha=0.2, label=f'{int(interval_width*100)}%的置信区间')
-ax.set_xlabel('销售日期')
-ax.set_ylabel('销量')
-ax.set_title('苹果预测期加载销量时间效应的最终订货量对比图')
-ax.legend()
-plt.savefig(r"D:\Work info\SCU\MathModeling\2023\data\processed\question_3\results\apple_forecast_final.svg", dpi=300, bbox_inches='tight')
-plt.show()
-
-print('question_3运行完毕！')
+    # 绘制并保存输出最优分布图
+    figure = plt.gcf()  # 获取当前图像
+    plt.plot(f.x, f.y, 'b-.', label='f.y')
+    plt.plot(f.x, f.fitted_pdf[name_dist], 'r-', label="f.fitted_pdf")
+    plt.xlabel(f'{groups_[i]}_销量最优分布拟合')
+    plt.ylabel('Probability')
+    plt.title(f'best distribution: {name_dist}')
+    plt.legend()
+    plt.show()
+    figure.savefig(output_path + f"单品_{groups_[i]}_best distribution.svg")
+    figure.clear()
