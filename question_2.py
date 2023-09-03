@@ -34,8 +34,9 @@ output_index = 7  # 将前output_index个预测结果作为最终结果
 extend_power = 1/5 # 数据扩增的幂次
 interval_width = 0.95 # prophet的置信区间宽度
 last_day = last_day # 训练集的最后一天+1，即预测集的第一天
-mcmc_samples = 100 # mcmc采样次数
+mcmc_samples = 0 # mcmc采样次数
 distributions = ['cauchy', 'chi2', 'expon', 'exponpow', 'gamma', 'lognorm', 'norm', 'powerlaw', 'irayleigh', 'uniform']
+seasonality_mode = 'multiplicative'
 
 pd.set_option('display.max_columns', None)
 pd.set_option('display.max_rows', periods)
@@ -119,6 +120,16 @@ for _ in account_commodity['sm_sort_name'].unique():
     sm_qielei_all.drop(columns=['amount_y', 'sum_cost_y', 'sum_price_y', 'unit_cost_y', 'loss_rate_y'], inplace=True)
     sm_qielei_all.rename(columns={'amount_x': 'amount', 'sum_cost_x': 'sum_cost', 'sum_price_x': 'sum_price', 'unit_cost_x': 'unit_cost', 'loss_rate_x': 'loss_rate'}, inplace=True)
 
+    print(f"{_}经过差值后存在空值的字段有:\n{sm_qielei_all.columns[sm_qielei_all.isnull().sum()>0].to_list()}\n")
+    pd.set_option('display.max_rows', 20)
+    print(f"存在空值的字段的数据类型为：\n{sm_qielei_all[sm_qielei_all.columns[sm_qielei_all.isnull().sum()>0]].dtypes}\n")
+    pd.set_option('display.max_rows', 7)
+    print(f"{_}经过差值后存在空值的行数为：{sm_qielei_all.isnull().T.any().sum()}", '\n')
+    # 将sm_qielei_all中存在空值的那些字段的空值用众数填充
+    for col in sm_qielei_all.columns[sm_qielei_all.isnull().sum()>0]:
+        sm_qielei_all[col].fillna(sm_qielei_all[col].mode()[0], inplace=True)
+    print(f"{_}经过众数填充后存在空值的行数为：{sm_qielei_all.isnull().T.any().sum()}", '\n')
+
     sm_qielei_all = sm_qielei_all.round(3)
     sm_qielei_all.to_excel(os.path.join(output_path, f"{_}_在全集上的样本.xlsx"), index=False, sheet_name=f'{_}在全集上的样本')
     # 获取茄类在训练集上的样本
@@ -149,14 +160,6 @@ for _ in account_commodity['sm_sort_name'].unique():
     # 断言这三个字段非空数据的起止日期相同
     assert (sm_qielei_all[sm_qielei_all['amount'].notnull()]["busdate"].min() == sm_qielei_all[sm_qielei_all['sum_cost'].notnull()]["busdate"].min() == sm_qielei_all[sm_qielei_all['sum_price'].notnull()]["busdate"].min()), "三个字段非空数据的开始日期不相同"
     assert (sm_qielei_all[sm_qielei_all['amount'].notnull()]["busdate"].max() == sm_qielei_all[sm_qielei_all['sum_cost'].notnull()]["busdate"].max() == sm_qielei_all[sm_qielei_all['sum_price'].notnull()]["busdate"].max()), "三个字段非空数据的结束日期不相同"
-
-    # 以'busdate'为横坐标，'amount'为纵坐标，画出时序图。用sns来画图，使图更美观，使横坐标的日期不会重叠，并且横坐标以每月为时间间隔显示
-    sns.lineplot(x='busdate', y='amount', data=sm_qielei)
-    plt.xticks(rotation=45)
-    plt.xlabel('busdate')
-    plt.ylabel('amount')
-    plt.title(f'{_}Time Series Graph')
-    plt.show()
 
     # 用prophet获取训练集上的星期效应系数、节日效应系数和年季节性效应系数
     qielei_prophet_amount = sm_qielei[['busdate', 'amount']].rename(columns={'busdate': 'ds', 'amount': 'y'})
@@ -202,6 +205,11 @@ for _ in account_commodity['sm_sort_name'].unique():
     print("空值填充后，各列空值数","\n",qielei_prophet_amount.isnull().sum(),'\n')
     pd.set_option('display.max_rows', 7)
     # 保存输出带有时间效应和星期、节假日标签的茄类销量样本
+    if seasonality_mode == 'multiplicative':
+        # 将qielei_prophet_amount中holiday_effect','weekly_effect','yearly_effect','total_effect'四列的值都限定到某个区间
+        qielei_prophet_amount[['holiday_effect','weekly_effect','yearly_effect','total_effect']] = qielei_prophet_amount[['holiday_effect','weekly_effect','yearly_effect','total_effect']].apply(lambda x: np.clip(x, -0.9, 9))
+    else:
+        qielei_prophet_amount[['holiday_effect','weekly_effect','yearly_effect','total_effect']] = qielei_prophet_amount[['holiday_effect','weekly_effect','yearly_effect','total_effect']].apply(lambda x: np.clip(x, np.percentile(x, 10), np.percentile(x, 90)))
     qielei_prophet_amount = qielei_prophet_amount.round(3)
     qielei_prophet_amount.to_excel(os.path.join(output_path, f"{_}_销量时序分解.xlsx"), index=False, sheet_name=f'{_}用历史销量计算出的时间效应，合并到训练集中')
 
@@ -210,7 +218,10 @@ for _ in account_commodity['sm_sort_name'].unique():
     print(f"sum(forecast['multiplicative_terms']-(forecast['holidays']+forecast['weekly']+forecast['yearly'])) = {sum(forecast_amount['multiplicative_terms']-(forecast_amount['holidays']+forecast_amount['weekly']+forecast_amount['yearly']))}", '\n')
 
     # 剔除sm_qielei的时间相关效应，得到sm_qielei_no_effect；因为multiplicative_terms包括节假日效应、星期效应、年季节性效应，multiplicative_terms就代表综合时间效应。
-    sm_qielei['amt_no_effect'] = sm_qielei['amount'].values / (1+qielei_prophet_amount['total_effect']).values
+    if seasonality_mode == 'multiplicative':
+        sm_qielei['amt_no_effect'] = sm_qielei['amount'].values / (1+qielei_prophet_amount['total_effect']).values
+    else:
+        sm_qielei['amt_no_effect'] = sm_qielei['amount'].values - qielei_prophet_amount['total_effect'].values
     # 对sm_qielei['amt_no_effect']和sm_qielei['amount']画图，比较两者的差异，横坐标为busdate, 纵坐标为amount和amt_no_effect, 用plt画图
     fig = plt.figure()
     plt.plot(sm_qielei['busdate'], sm_qielei['amount'], label='剔除时间效应前销量')
@@ -386,6 +397,9 @@ for _ in account_commodity['sm_sort_name'].unique():
     plt.show()
     fig1.savefig(output_path + f"\{_}_fit_revenue.svg", dpi=300, bbox_inches='tight')
     fig2.savefig(output_path + f"\{_}_fit_revenue_components.svg", dpi=300, bbox_inches='tight')
+    # if the "yhat" column in forecast_price <= 0, then replace it with the mean of last 7 days' "yhat" before it
+    forecast_price['yhat'] = forecast_price['yhat'].apply(lambda x: max(forecast_price['yhat'].rolling(7, min_periods=1).mean().iloc[-1], np.random.uniform(0, max(forecast_price['yhat'].median(), 0.1))) if x < 0 else x)
+    
     forecast_price.to_excel(output_path + f"\{_}_销售额时序分解.xlsx", index=False, encoding='utf-8-sig', sheet_name=f'{_}预测销售额')
 
 

@@ -249,7 +249,7 @@ else:
     print("sale_sm['code'] is not of type float64 and does not contain decimal points.")
 
 
-# 绘制各个小分类的平均销量时序图，及其分布比较，并得到最优分布
+# 绘制各个单品的平均销量时序图，及其分布比较，并得到最优分布
 for name, data in sale_sm.groupby(['name']):
     # 在df_p1中，对各个sm_sort分别画时间序列图，横坐标是busdate，纵坐标是amount
     fig = plt.figure(figsize=(20, 10))
