@@ -21,8 +21,10 @@ unit_cost_critical = 0  # 进货单价的筛选阈值，小于等于该值的数
 if __name__ == '__main__':
 
     code_sm = pd.read_excel(f"{input_path}" + "附件1-单品-分类.xlsx")
+    code_sm[['单品编码', '分类编码']] = code_sm[['单品编码', '分类编码']].astype(str)
     print(f"code_sm['单品编码'].nunique(): {code_sm['单品编码'].nunique()}\ncode_sm['单品名称'].nunique(): {code_sm['单品名称'].nunique()}\ncode_sm['分类编码'].nunique(): {code_sm['分类编码'].nunique()}\ncode_sm['分类编码'].nunique(): {code_sm['分类编码'].nunique()}\n")
     run_code = pd.read_excel(f"{input_path}" + "附件2-流水-销量-售价.xlsx")
+    run_code['单品编码'] = run_code['单品编码'].astype(str)
     print(f"run_code['单品编码'].nunique(): {run_code['单品编码'].nunique()}\n")
 
     # 将code_sm中有，但run_code中没有的单品编码筛选出来
@@ -32,15 +34,27 @@ if __name__ == '__main__':
 
     acct_code = run_code.groupby(['单品编码', '销售日期'])['销量(千克)'].sum().reset_index()
     acct_com = pd.merge(acct_code, code_sm, on='单品编码', how='left')
-    acct_com[['单品编码', '分类编码']] = acct_com[['单品编码', '分类编码']].astype(str)
     pd.set_option('display.max_rows', 10)
     print(acct_com.dtypes, '\n')
     print(acct_com.isnull().sum(), '\n')
     pd.set_option('display.max_rows', 6)
     acct_com_sm = acct_com.groupby(['分类编码', '分类名称', '销售日期'])['销量(千克)'].sum().reset_index()
-    acct_com_sm.to_excel(f'{output_path}/分类日汇总销售.xlsx', index=False)
+
+    # 将acct_com_sm中的分类编码和分类名称两列合并，形成新的分类编码列，并用_连接
+    acct_com_sm['分类编码_名称'] = acct_com_sm['分类编码'] + '_' + acct_com_sm['分类名称']
+    acct_com_sm.drop(columns=['分类编码', '分类名称'], inplace=True)
+    # 按分类编码_名称列的不同取值，对销售日期列的值进行分组，形成新的列
+    acct_com_sm = acct_com_sm.pivot_table(index='销售日期', columns='分类编码_名称', values='销量(千克)', aggfunc=np.sum)
+    # 将销售日期列的数据类型转换为字符串型，不带时分秒
+    acct_com_sm.index = acct_com_sm.index.astype(str)
+    acct_com_sm.to_excel(f'{output_path}/分类日汇总销售.xlsx', index=True)
+
     acct_com.drop(columns=['分类编码', '分类名称'], inplace=True)
-    acct_com.to_excel(f'{output_path}/单品日汇总销售.xlsx', index=False)
+    acct_com['单品编码_名称'] = acct_com['单品编码'] + '_' + acct_com['单品名称']
+    acct_com.drop(columns=['单品编码', '单品名称'], inplace=True)
+    acct_com = acct_com.pivot_table(index='销售日期', columns='单品编码_名称', values='销量(千克)', aggfunc=np.sum)
+    acct_com.index = acct_com.index.astype(str)
+    acct_com.to_excel(f'{output_path}/单品日汇总销售.xlsx', index=True)
 
 
     commodity = pd.read_csv(f'{input_path}/commodity.csv')
