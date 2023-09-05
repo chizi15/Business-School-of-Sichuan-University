@@ -9,15 +9,40 @@ pd.set_option('display.max_columns', None)
 pd.set_option('display.max_rows', 6)
 
 
-input_path = r'D:\Work info\WestUnion\data\processed\HLJ\脱敏及筛选后样本数据\output'
-output_path = r"D:\Work info\SCU\MathModeling\2023\data\output"
-output_path_self_use = r"D:\Work info\SCU\MathModeling\2023\data\ZNEW_DESENS\ZNEW_DESENS\sampledata"
+input_path = r'D:\Work info\WestUnion\data\processed\HLJ\脱敏及筛选后样本数据\output' + '\\'
+output_path = r"D:\Work info\SCU\MathModeling\2023\data\output" + '\\'
+output_path_self_use = r"D:\Work info\SCU\MathModeling\2023\data\ZNEW_DESENS\ZNEW_DESENS\sampledata" + '\\'
 first_day = '2020-07-01'
 last_day = '2023-07-01'
 sm_sort_name = ['食用菌', '花叶类', '水生根茎类', '辣椒类', '茄类', '花菜类']
 unit_cost_critical = 0  # 进货单价的筛选阈值，小于等于该值的数据将被剔除
 
+
 if __name__ == '__main__':
+
+    code_sm = pd.read_excel(f"{input_path}" + "附件1-单品-分类.xlsx")
+    print(f"code_sm['单品编码'].nunique(): {code_sm['单品编码'].nunique()}\ncode_sm['单品名称'].nunique(): {code_sm['单品名称'].nunique()}\ncode_sm['分类编码'].nunique(): {code_sm['分类编码'].nunique()}\ncode_sm['分类编码'].nunique(): {code_sm['分类编码'].nunique()}\n")
+    run_code = pd.read_excel(f"{input_path}" + "附件2-流水-销量-售价.xlsx")
+    print(f"run_code['单品编码'].nunique(): {run_code['单品编码'].nunique()}\n")
+
+    # 将code_sm中有，但run_code中没有的单品编码筛选出来
+    code_sm_not_in_run_code = code_sm[~code_sm['单品编码'].isin(run_code['单品编码'])]
+    print("附件1中有，附件2中没有的单品编码：\n", code_sm_not_in_run_code, '\n')
+    code_sm_not_in_run_code.to_excel(f'{output_path}/附件1中有但附件2中没有的单品编码.xlsx', index=False)
+
+    acct_code = run_code.groupby(['单品编码', '销售日期'])['销量(千克)'].sum().reset_index()
+    acct_com = pd.merge(acct_code, code_sm, on='单品编码', how='left')
+    acct_com[['单品编码', '分类编码']] = acct_com[['单品编码', '分类编码']].astype(str)
+    pd.set_option('display.max_rows', 10)
+    print(acct_com.dtypes, '\n')
+    print(acct_com.isnull().sum(), '\n')
+    pd.set_option('display.max_rows', 6)
+    acct_com_sm = acct_com.groupby(['分类编码', '分类名称', '销售日期'])['销量(千克)'].sum().reset_index()
+    acct_com_sm.to_excel(f'{output_path}/分类日汇总销售.xlsx', index=False)
+    acct_com.drop(columns=['分类编码', '分类名称'], inplace=True)
+    acct_com.to_excel(f'{output_path}/单品日汇总销售.xlsx', index=False)
+
+
     commodity = pd.read_csv(f'{input_path}/commodity.csv')
     # 先转成int64，以免位数超限被转换为负数
     if not isinstance(commodity['code'].iloc[0], str):
