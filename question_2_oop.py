@@ -368,7 +368,7 @@ def ordering_pricing(sm_qielei_all, _):
     forecast[['预测金额', '预测单价', '预测成本单价']] = forecast[['预测金额', '预测单价', '预测成本单价']].applymap(lambda x: round(x, 2))
     forecast[['加载毛利率时间效应的第二次报童订货量', '加载销量时间效应的最终订货量']] = forecast[['加载毛利率时间效应的第二次报童订货量', '加载销量时间效应的最终订货量']].apply(lambda x: round(x).astype(int))
     forecast['预测毛利率'] = forecast['预测毛利率'].apply(lambda x: round(x, 3))
-    forecast_output = forecast.iloc[[output_index-1]]
+    forecast_output = forecast.iloc[:output_index]
     forecast_output['销售日期'] = forecast_output['销售日期'].dt.date
     forecast_output.to_excel(output_path + f"\{_}_在预测期每日的预测销售额、预测单价、预测成本、预测毛利率、加载毛利率时间效应的第二次报童订货量和加载销量时间效应的最终订货量.xlsx", index=False, encoding='utf-8-sig', sheet_name=f'问题2最终结果：{_}在预测期每日的预测销售额、预测单价、预测成本、预测毛利率、加载毛利率时间效应的第二次报童订货量和加载销量时间效应的最终订货量')
 
