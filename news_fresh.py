@@ -7,12 +7,25 @@ import matplotlib.pyplot as plt
 from matplotlib.patches import PathPatch
 import seaborn as sns
 import datetime
-import sys
-# 添加其他文件夹路径的脚本到系统临时路径，不会保留在环境变量中，每次重新append即可
-sys.path.append("D:\\Work info\\Repositories\\regression_evaluation_main\\regression_evaluation_def.py")
-import regression_evaluation_def as ref
+import sys, os
+base_path = os.path.dirname(os.path.dirname(__file__))  
+sys.path.append(base_path)  # regression_evaluation_main所在文件夹的绝对路径
+from regression_evaluation_main import regression_evaluation_def as ref
+
 pd.set_option('display.max_columns', None)
 pd.set_option('display.min_rows', 20)
+plt.rcParams['font.sans-serif']=['SimHei']  # 用来正常显示中文标签
+plt.rcParams['axes.unicode_minus']=False  # 用来正常显示负号
+"""
+中文字体	    说明
+‘SimHei’	中文黑体
+‘Kaiti’	    中文楷体
+‘LiSu’	    中文隶书
+‘FangSong’	中文仿宋
+‘YouYuan’	中文幼圆
+’STSong‘    华文宋体
+"""
+print('Imported packages successfully.', '\n')
 
 
 organ = 'HLJ'
@@ -74,10 +87,13 @@ def adjust_box_widths(g, fac=0.8):
                 verts_sub[verts_sub[:, 0] == xmin, 0] = xmin_new
                 verts_sub[verts_sub[:, 0] == xmax, 0] = xmax_new
 
-                # setting new width of median line
-                for l in ax.lines:
-                    if np.all(l.get_xdata() == [xmin, xmax]):
-                        l.set_xdata([xmin_new, xmax_new])
+                try:
+                    # setting new width of median line
+                    for l in ax.lines:
+                        if np.all(l.get_xdata() == [xmin, xmax]):
+                            l.set_xdata([xmin_new, xmax_new])
+                except:
+                    print(f"{Exception}")
 
 
 match process_type:
