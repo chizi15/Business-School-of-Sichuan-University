@@ -294,6 +294,7 @@ else:
     raise ValueError('The mean of (sum_cost / amount - unit_cost) is not less than 1e-3')
 acct_com.drop(columns=['price',	'cost_price', 'profit'], inplace=True)
 
+
 for _ in acct_com['name'].unique():
     sm_qielei_all = acct_com[acct_com['name'] == _]
     

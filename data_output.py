@@ -13,7 +13,7 @@ input_path = r'D:\Work info\WestUnion\data\processed\HLJ\脱敏及筛选后样�
 output_path = r"D:\Work info\SCU\MathModeling\2023\data\output" + '\\'
 output_path_self_use = r"D:\Work info\SCU\MathModeling\2023\data\ZNEW_DESENS\ZNEW_DESENS\sampledata" + '\\'
 first_day = '2020-07-01'
-last_day = '2023-07-01'
+last_day = '2023-06-30'
 sm_sort_name = ['食用菌', '花叶类', '水生根茎类', '辣椒类', '茄类', '花菜类']
 unit_cost_critical = 0  # 进货单价的筛选阈值，小于等于该值的数据将被剔除
 

@@ -1,17 +1,29 @@
-# -*- coding: utf-8 -*-
-from prophet import Prophet
+"""
+解法概述：
+1. 将最近一段时间有销售的单品筛选出，按平均销量降序排序，取出满足最小陈列量要求的单品集合A。
+2. 对集合A中单品使用使用qiestion_1.py中流程得到相关性筛选排序合并后的分组集合B。
+3. 使用集合B中的分组，筛选出满足单品数条件的组合方式，计算各组合方式的平均毛利额，取出其值最大的组合C。
+4. 对该组合C使用question_2.py中流程得到各组的最优订购量，再将最优订购量分解到各单品。
+5. 使用question_2.py中流程得到各单品的最优售价，使集合B的毛利率最大。
+"""
+
 import pandas as pd
 import numpy as np
-from scipy import stats
-import chinese_calendar
 import fitter
 import matplotlib.pyplot as plt
 import seaborn as sns
+from prophet import Prophet
+from scipy import stats
+import chinese_calendar
+import matplotlib.pyplot as plt
 import sys, os
-base_path = os.path.dirname(os.path.dirname(__file__))
+base_path = os.path.dirname(os.path.dirname(__file__))  
 sys.path.append(base_path)  # regression_evaluation_main所在文件夹的绝对路径
 from regression_evaluation_main import regression_evaluation_def as ref
-from data_output import output_path_self_use, last_day
+from data_output import output_path_self_use
+
+pd.set_option('display.max_columns', None)
+pd.set_option('display.max_rows', 8)
 plt.rcParams['font.sans-serif']=['SimHei']  # 用来正常显示中文标签
 plt.rcParams['axes.unicode_minus']=False  # 用来正常显示负号
 """
@@ -27,21 +39,23 @@ print('Imported packages successfully.', '\n')
 
 
 # 设置全局参数
-periods = 7 # 预测步数
-output_index = 7  # 将前output_index个预测结果作为最终结果
+periods = 1 # 预测步数
+output_index = 1  # 将前output_index个预测结果作为最终结果
 extend_power = 1/5 # 数据扩增的幂次
 interval_width = 0.95 # prophet的置信区间宽度
-last_day = last_day # 训练集的最后一天+1，即预测集的第一天
-mcmc_samples = 100 # mcmc采样次数
-distributions = ['cauchy', 'chi2', 'expon', 'exponpow', 'gamma', 'lognorm', 'norm', 'powerlaw', 'irayleigh', 'uniform']
+first_day = '2023-06-24'
+last_day = '2023-06-30'
+amount_min = 2.5 # 最小陈列量
+code_num_max = 30
+code_num_min = 24
+mcmc_samples = 0 # mcmc采样次数
+coef = round(1/3, 2) # 相关系数排序分组时的阈值
+corr_neg = -0.2 # 销量与售价的负相关性阈值
 seasonality_mode = 'multiplicative'
 
-pd.set_option('display.max_columns', None)
-pd.set_option('display.max_rows', periods)
-
-input_path = output_path_self_use
-# create the directory if it doesn't exist
-output_path = r"D:\Work info\SCU\MathModeling\2023\data\processed\question_2"
+distributions = ['cauchy', 'chi2', 'expon', 'exponpow', 'gamma', 'lognorm', 'norm', 'powerlaw', 'irayleigh', 'uniform']
+input_path = output_path_self_use + "\\"
+output_path = r"D:\Work info\SCU\MathModeling\2023\data\processed\question_3" + "\\"
 if not os.path.exists(output_path):
     os.makedirs(output_path)
 
@@ -78,31 +92,226 @@ acct_code_sm_loss = acct_code_sm.merge(loss_code, on=['code', 'name'], how='left
 acct_code_sm_loss_cost = acct_code_sm_loss.merge(cost_code, on=['code', 'busdate'], how='left')
 acct_code_sm_loss_cost['sum_cost'] = acct_code_sm_loss_cost['amount'] * acct_code_sm_loss_cost['unit_cost']
 acct_code_sm_loss_cost.drop(columns=['price'], inplace=True)
-acct_sm = acct_code_sm_loss_cost.groupby(['sm_sort', 'sm_sort_name', 'busdate'])['amount', 'sum_cost', 'sum_price'].sum().reset_index()
-acct_loss = acct_code_sm_loss_cost.groupby(['sm_sort', 'sm_sort_name', 'busdate'])['loss_rate'].mean().reset_index()
-acct_sm_loss = acct_sm.merge(acct_loss, on=['sm_sort', 'sm_sort_name', 'busdate'], how='left')
-acct_sm_loss['unit_cost'] = acct_sm_loss['sum_cost'] / acct_sm_loss['amount']
-print(f'\nacct_sm_loss\n\nshape: {acct_sm_loss.shape}\n\ndtypes:\n{acct_sm_loss.dtypes}\n\nnull-columns:\n{acct_sm_loss.isnull().sum()}', '\n')
-acct_sm_loss = acct_sm_loss.round(3)
-acct_sm_loss.sort_values(by=['sm_sort', 'busdate'], inplace=True)
+acct_code_sm_loss_cost['profit'] = (acct_code_sm_loss_cost['sum_price'] - acct_code_sm_loss_cost['sum_cost']) / acct_code_sm_loss_cost['sum_price']
+acct_code_sm_loss_cost = acct_code_sm_loss_cost[acct_code_sm_loss_cost['profit'] > 0]
+acct_code_sm_loss_cost['price'] = acct_code_sm_loss_cost['sum_price'] / acct_code_sm_loss_cost['amount']
+acct_code_sm_loss_cost.dropna(inplace=True)
 
+
+
+# 对acount按code分组，筛选出当busdate在first_day与last_day之间时，amount均大于0的code
+account_1 = acct_code_sm_loss_cost[acct_code_sm_loss_cost['busdate'].between(first_day, last_day)]
+codes_between_dates = account_1.groupby('code')['busdate'].nunique()
+
+codes_between_dates = codes_between_dates[codes_between_dates == (pd.to_datetime(last_day) - pd.to_datetime(first_day)).days + 1].index
+if len(codes_between_dates) <= code_num_max:
+    codes_between_dates = account_1.groupby('code')['busdate'].nunique().index
+    print(f"最近一周中存在销售的单品数: {len(codes_between_dates)}", '\n')
+else:
+    print(f"最近一周中每天都销售的单品数: {len(codes_between_dates)}", '\n')
+account_1 = account_1[account_1['code'].isin(codes_between_dates)]
+# 将account_1[account_1['amount'] <= 0]['code'].unique()从codes_between_dates中排除
+codes_between_dates = set(codes_between_dates) - set(account_1[account_1['amount'] <= 0]['code'].unique())
+account_1 = account_1[account_1['code'].isin(codes_between_dates)]
+acct_grup_1 = account_1.groupby(["code"])
+print(f"number of commodities after date filtering: {len(acct_grup_1['code'].unique())}", '\n')
+# 计算acct_grup_1中每个code的平均销量，按降序排序，取出满足最小陈列量amount_min要求的code集合
+acct_grup_1 = acct_grup_1.mean().sort_values(by=['amount'], ascending=False).reset_index()
+acct_grup_1 = acct_grup_1[acct_grup_1['amount'] >= amount_min]
+print(f"number of commodities after amount filtering: {len(acct_grup_1['code'].unique())}", '\n')
+
+acct_code_sm_loss_cost = acct_code_sm_loss_cost[acct_code_sm_loss_cost['code'].isin(acct_grup_1['code'].unique())]
+print(f'去除空值与非正毛利率的样本后，有{acct_code_sm_loss_cost["code"].nunique()}个codes', '\n')
+
+# 将account中各个code的平均profit按降序排序
+account_mean = acct_code_sm_loss_cost.groupby(["code"]).mean().reset_index()
+account_mean['amount*profit'] = account_mean['amount'] * account_mean['profit']
+acct_grup = account_mean.sort_values(by=['amount*profit'], ascending=False).reset_index()
+try:    
+    # 从code_num_max到code_num_min中随机选择一个数
+    code_num = np.random.randint(min(code_num_min, acct_grup.shape[0]), min(code_num_max+1, acct_grup.shape[0]))
+except:
+    code_num = acct_grup.shape[0]
+acct_grup = acct_grup.iloc[:code_num, :]
+
+acct_code_sm_loss_cost = acct_code_sm_loss_cost[acct_code_sm_loss_cost['code'].isin(acct_grup['code'].unique())]
+print(f'最终筛选出的单品：{acct_code_sm_loss_cost["code"].nunique()}个codes', '\n')
+
+
+
+# 第一部分：对筛选出的单品进行相关性筛选、排序、合并
+# 绘制各个单品的平均销量时序图，及其分布比较，并得到最优分布
+for name, data in acct_code_sm_loss_cost.groupby(['name']):
+    # 在acct_com中，对各个sm_sort分别画时间序列图，横坐标是busdate，纵坐标是amount
+    fig = plt.figure(figsize=(20, 10))
+    plt.plot(data['busdate'], data['amount'])
+    plt.title(f'{name}')
+    plt.show()
+    fig.savefig(output_path + "单品_%s_销量时序.svg" % name)  # 按单品聚合后的平均销量和平均价格
+    fig.clear()
+
+    # 对销量序列进行分布拟合比较
+    f = fitter.Fitter(data['amount'], distributions=distributions, timeout=10)
+    f.fit()
+    comparison_of_distributions_qielei = f.summary(Nbest=len(distributions))
+    print(f'\n{comparison_of_distributions_qielei.round(4)}\n')
+    comparison_of_distributions_qielei = comparison_of_distributions_qielei.round(4)
+    comparison_of_distributions_qielei.to_excel(output_path + f"单品_{name}_comparison_of_distributions.xlsx", sheet_name=f'{name}_comparison of distributions')
+
+    # 给figure添加label和title，并保存输出对比分布图
+    name_dist = list(f.get_best().keys())[0]
+    print(f'best distribution: {name_dist}''\n')
+    figure = plt.gcf()  # 获取当前图像
+    plt.xlabel(f'{name}_销量分布拟合对比')
+    plt.ylabel('Probability')
+    plt.title(f'{name}_comparison of distributions')
+    plt.show()
+    figure.savefig(output_path + f"单品_{name}_comparison of distributions.svg")
+    figure.clear()  # 先画图plt.show，再释放内存
+
+    # 绘制并保存输出最优分布图
+    figure = plt.gcf()  # 获取当前图像
+    plt.plot(f.x, f.y, 'b-.', label='f.y')
+    plt.plot(f.x, f.fitted_pdf[name_dist], 'r-', label="f.fitted_pdf")
+    plt.xlabel(f'{name}_销量最优分布拟合')
+    plt.ylabel('Probability')
+    plt.title(f'best distribution: {name_dist}')
+    plt.legend()
+    plt.show()
+    figure.savefig(output_path + f"单品_{name}_best distribution.svg")
+    figure.clear()
+
+
+# 对数变换增强正态性，以加强对相关系数计算假设条件的满足程度
+acct_code_sm_loss_cost['amount'] = acct_code_sm_loss_cost['amount'].apply(lambda x: np.log1p(x))
+acct_code_sm_loss_cost['price'] = acct_code_sm_loss_cost['price'].apply(lambda x: np.log1p(x))
+# 筛选销量与价格负相关性强的单品
+typeA = []
+typeB = []
+for code, data in acct_code_sm_loss_cost.groupby(['name']):
+    if len(data)>5:
+        r = stats.spearmanr(data['amount'], data['price']).correlation
+        if r < corr_neg:
+            typeA.append(code)
+        else:
+            typeB.append(code)
+# 对sale_sm['amount']和price做np.log1p的逆变换，使数据回到原来的尺度
+acct_code_sm_loss_cost['amount'] = acct_code_sm_loss_cost['amount'].apply(lambda x: np.expm1(x))
+acct_code_sm_loss_cost['price'] = acct_code_sm_loss_cost['price'].apply(lambda x: np.expm1(x))
+sale_sm_a = acct_code_sm_loss_cost[acct_code_sm_loss_cost['name'].isin(typeA)]
+sale_sm_b = acct_code_sm_loss_cost[acct_code_sm_loss_cost['name'].isin(typeB)]
+print(f'销量与价格的负相关性强(小于{corr_neg})的单品一共有{sale_sm_a["name"].nunique()}个')
+print(f'销量与价格的负相关性弱(大于等于{corr_neg})的单品一共有{sale_sm_b["name"].nunique()}个', '\n')
+sale_sm_a.to_excel(output_path + f"单品_销售数据_销量与价格的负相关性强(小于{corr_neg})的一组.xlsx")
+sale_sm_b.to_excel(output_path + f"单品_销售数据_销量与价格的负相关性弱(大于等于{corr_neg})的一组.xlsx")
+
+# 计算负相关性强的单品序列的相关系数并画热力图。
+# 先对df行转列
+sale_sm_a_t = pd.pivot(sale_sm_a, index="busdate", columns="name", values="amount")
+# 计算每列间的相关性
+sale_sm_a_coe = sale_sm_a_t.corr(method='pearson') # Compute pairwise correlation of columns, excluding NA/null values
+plt.figure(figsize=(20, 20))
+sns.heatmap(sale_sm_a_coe, annot=True, xticklabels=True, yticklabels=True)
+plt.savefig(output_path + "单品_销量与价格负相关性强的一组中，各个单品销量间的corr_heatmap.svg")
+
+# 对typeA中单品按相关系数的排序进行分组
+# 选择相关性大于coef的组合
+groups = []
+idxs = sale_sm_a_coe.index.to_list()
+for idx, row in sale_sm_a_coe.iterrows():
+    group = row[row > coef].index.to_list()
+    groups.append(group)
+groups_ = []
+for group in groups:
+    diff_group = []
+    for idx in group:
+        if idx in idxs:
+            idxs.remove(idx)
+        else:
+            diff_group.append(idx)
+    group = set(group)-set(diff_group)
+    if group:
+        groups_.append(group)
+print(f'进行相关性排序，并以相关系数大于{round(coef, 2)}为条件进行分组后的结果:\n{groups_}\n')
+
+# 将groups_中的集合转换为列表
+groups_ = [list(group) for group in groups_]
+groups_.append(typeB)
+print(f'最终分组结果\n{groups_}')
+# 将groups_中的列表转换为df，索引为组号，列名为各个单品名
+groups_df = pd.DataFrame(pd.Series(groups_), columns=['name'])
+groups_df['group'] = groups_df.index+1
+# 改变列的顺序
+groups_df = groups_df[['group', 'name']]
+groups_df.to_excel(output_path + f"单品_相关性分组结果：以相关系数大于{coef}为条件.xlsx", index=False, sheet_name='最后一组是销量对价格不敏感的，前面若干组是销量对价格敏感的')
+
+# 对groups_中的每个组，从acct_com中筛选出对应的数据，组成list_df
+list_df = [acct_code_sm_loss_cost[acct_code_sm_loss_cost['name'].isin(group)] for group in groups_]
+# 循环对list_df中每个df按busdate进行合并groupby，并求均值
+list_df_avg = [data.groupby(['busdate']).agg({'amount': 'mean', 'sum_price': 'mean', 'sum_cost': 'mean'}).reset_index() for data in list_df]
+# 对list_df_avg中每个df画时间序列图，横坐标是busdate，纵坐标是amount
+for i, data in enumerate(list_df_avg):
+    fig = plt.figure(figsize=(20, 10))
+    plt.plot(data['busdate'], data['amount'])
+    plt.title(f'{groups_[i]}')
+    plt.show()
+    fig.savefig(output_path + f"单品_{str(groups_[i]).replace('[', '(').replace(']', ')')}_按相关性分组合并后的销量时序.svg")  # 按单品聚合后的平均销量
+    fig.clear()
+
+    # 对销量序列进行分布拟合比较
+    f = fitter.Fitter(data['amount'], distributions=distributions, timeout=10)
+    f.fit()
+    comparison_of_distributions_qielei = f.summary(Nbest=len(distributions))
+    print(f'\n{comparison_of_distributions_qielei.round(4)}\n')
+    comparison_of_distributions_qielei = comparison_of_distributions_qielei.round(4)
+    # 将groups_[i]中的单品名转换为字符串，再替换异常符号，以便作为excel文件名和sheet_name表名
+    groups_[i] = str(groups_[i])
+    groups_[i] = groups_[i].replace('\'', '').replace('[', '(').replace(']', ')')
+    comparison_of_distributions_qielei.to_excel(output_path + f"单品_{groups_[i]}_comparison_of_distributions.xlsx", sheet_name=f'{groups_[i]}_comparison of distributions')
+    figure.clear()
+
+    # 给figure添加label和title，并保存输出对比分布图
+    name_dist = list(f.get_best().keys())[0]
+    print(f'best distribution: {name_dist}''\n')
+    figure = plt.gcf()  # 获取当前图像
+    plt.xlabel(f'{groups_[i]}_销量分布拟合对比')
+    plt.ylabel('Probability')
+    plt.title(f'{groups_[i]}_comparison of distributions')
+    plt.show()
+    figure.savefig(output_path + f"单品_{groups_[i]}_comparison of distributions.svg")
+    figure.clear()  # 先画图plt.show，再释放内存
+
+    # 绘制并保存输出最优分布图
+    figure = plt.gcf()  # 获取当前图像
+    plt.plot(f.x, f.y, 'b-.', label='f.y')
+    plt.plot(f.x, f.fitted_pdf[name_dist], 'r-', label="f.fitted_pdf")
+    plt.xlabel(f'{groups_[i]}_销量最优分布拟合')
+    plt.ylabel('Probability')
+    plt.title(f'best distribution: {name_dist}')
+    plt.legend()
+    plt.show()
+    figure.savefig(output_path + f"单品_{groups_[i]}_best distribution.svg")
+    figure.clear()
+
+
+
+# 第二部分：计算各单品的最优订购量和最优售价
 # 考虑损耗率
-acct_sm_loss['amount_origin'] = acct_sm_loss['amount']
-acct_sm_loss['amount'] = acct_sm_loss['amount'] * (1 + acct_sm_loss['loss_rate']/100)
-acct_sm_loss['sum_cost'] = acct_sm_loss['amount'] * acct_sm_loss['unit_cost']
-acct_sm_loss['sum_price'] = acct_sm_loss['sum_price'] * (1 + acct_sm_loss['loss_rate']/100)
-acct_sm_loss['profit'] = (acct_sm_loss['sum_price'] - acct_sm_loss['sum_cost']) / acct_sm_loss['sum_price']
-acct_sm_loss = acct_sm_loss[acct_sm_loss['profit'] > 0]
-if abs(np.mean(acct_sm_loss['sum_cost'] / acct_sm_loss['amount'] - acct_sm_loss['unit_cost'])) < 1e-3:
+acct_code_sm_loss_cost['amount_origin'] = acct_code_sm_loss_cost['amount']
+acct_code_sm_loss_cost['amount'] = acct_code_sm_loss_cost['amount'] * (1 + acct_code_sm_loss_cost['loss_rate']/100)
+acct_code_sm_loss_cost['sum_cost'] = acct_code_sm_loss_cost['amount'] * acct_code_sm_loss_cost['unit_cost']
+acct_code_sm_loss_cost['sum_price'] = acct_code_sm_loss_cost['amount'] * acct_code_sm_loss_cost['price']
+acct_code_sm_loss_cost['profit'] = (acct_code_sm_loss_cost['sum_price'] - acct_code_sm_loss_cost['sum_cost']) / acct_code_sm_loss_cost['sum_price']
+acct_code_sm_loss_cost = acct_code_sm_loss_cost[acct_code_sm_loss_cost['profit'] > 0]
+if abs(np.mean(acct_code_sm_loss_cost['sum_cost'] / acct_code_sm_loss_cost['amount'] - acct_code_sm_loss_cost['unit_cost'])) < 1e-3:
     print('The mean of (sum_cost / amount - unit_cost) is less than 1e-3')
 else:
     raise ValueError('The mean of (sum_cost / amount - unit_cost) is not less than 1e-3')
+acct_code_sm_loss_cost.drop(columns=['price', 'profit'], inplace=True)
 
 
-
-# question_2；对sm_sort层级进行预测和定价，而不是在code层级上进行预测和定价
-for _ in acct_sm_loss['sm_sort_name'].unique():
-    sm_qielei_all = acct_sm_loss[acct_sm_loss['sm_sort_name'] == _]
+for _ in acct_code_sm_loss_cost['name'].unique():
+    sm_qielei_all = acct_code_sm_loss_cost[acct_code_sm_loss_cost['name'] == _]
     # 用sm_qielei_all的最后一行复制出periods行，并将busdate分别加上1、2、3、4、5、6、7，得到预测期的日期
     sm_qielei_all = sm_qielei_all.append([sm_qielei_all.iloc[-1, :]] * (periods), ignore_index=True)
     sm_qielei_all['busdate'][-(periods):] = sm_qielei_all['busdate'][-(periods):] + pd.to_timedelta(np.arange(1, periods+1), unit='d')
@@ -110,14 +319,13 @@ for _ in acct_sm_loss['sm_sort_name'].unique():
     sm_qielei_all[-(periods):]['amount_origin'] += np.random.normal(0, max(0, min(sm_qielei_all['amount_origin'].std()**0.5, sm_qielei_all['amount_origin'].mean()/10)), periods)
     # 将sm_qielei_all中的amount_origin列的值赋给amount列，如果amount列的值小于amount_origin列的值
     sm_qielei_all[-(periods):].loc[sm_qielei_all[-(periods):]['amount'] < sm_qielei_all[-(periods):]['amount_origin'], 'amount'] = sm_qielei_all[-(periods):]['amount_origin']
-
-
+    
     # 将全集上busdate缺失不连续的行用插值法进行填充
     sm_qielei_all_col = sm_qielei_all.set_index('busdate').resample('D').mean().interpolate(method='linear').reset_index()
     print("新增插入的行是：",'\n',pd.merge(sm_qielei_all_col, sm_qielei_all, on='busdate', how='left', indicator=True).query('_merge == "left_only"'), '\n')
     sm_qielei_all = pd.merge(sm_qielei_all_col, sm_qielei_all, on='busdate', how='left')
-    sm_qielei_all.drop(columns=['amount_y', 'sum_cost_y', 'sum_price_y', 'unit_cost_y', 'loss_rate_y', 'amount_origin_y', 'profit_y'], inplace=True)
-    sm_qielei_all.rename(columns={'amount_x': 'amount', 'sum_cost_x': 'sum_cost', 'sum_price_x': 'sum_price', 'unit_cost_x': 'unit_cost', 'loss_rate_x': 'loss_rate', 'profit_x': 'profit', 'amount_origin_x': 'amount_origin'}, inplace=True)
+    sm_qielei_all.drop(columns=['amount_y', 'sum_cost_y', 'sum_price_y', 'unit_cost_y', 'loss_rate_y', 'amount_origin_y'], inplace=True)
+    sm_qielei_all.rename(columns={'amount_x': 'amount', 'sum_cost_x': 'sum_cost', 'sum_price_x': 'sum_price', 'unit_cost_x': 'unit_cost', 'loss_rate_x': 'loss_rate', 'amount_origin_x': 'amount_origin'}, inplace=True)
 
     print(f"{_}经过差值后存在空值的字段有:\n{sm_qielei_all.columns[sm_qielei_all.isnull().sum()>0].to_list()}\n")
     pd.set_option('display.max_rows', 20)
@@ -145,6 +353,7 @@ for _ in acct_sm_loss['sm_sort_name'].unique():
     # 对sm_qielei_all中数值型变量的列：amount，sum_cost和sum_price画时序图
     sm_qielei_all_num = sm_qielei_all.select_dtypes(include=np.number)
     for col in sm_qielei_all_num:
+        print(f'{col}的时序图')
         sns.lineplot(x='busdate', y=col, data=sm_qielei_all)
         plt.xticks(rotation=45)
         plt.xlabel('busdate')
@@ -162,7 +371,7 @@ for _ in acct_sm_loss['sm_sort_name'].unique():
 
     # 用prophet获取训练集上的星期效应系数、节日效应系数和年季节性效应系数
     qielei_prophet_amount = sm_qielei[['busdate', 'amount']].rename(columns={'busdate': 'ds', 'amount': 'y'})
-    m_amount = Prophet(yearly_seasonality=True, weekly_seasonality=True, seasonality_mode='multiplicative', holidays_prior_scale=10, seasonality_prior_scale=10, mcmc_samples=mcmc_samples, interval_width=interval_width)
+    m_amount = Prophet(yearly_seasonality=True, weekly_seasonality=True, seasonality_mode=seasonality_mode, holidays_prior_scale=10, seasonality_prior_scale=10, mcmc_samples=mcmc_samples, interval_width=interval_width)
     m_amount.add_country_holidays(country_name='CN')
     m_amount.fit(qielei_prophet_amount)
     future_amount = m_amount.make_future_dataframe(periods=periods)
@@ -349,23 +558,9 @@ for _ in acct_sm_loss['sm_sort_name'].unique():
     all_set.to_excel(output_path + f"\{_}_全集上的第一次决策结果及时间效应系数.xlsx", index=False, encoding='utf-8-sig', sheet_name=f'问题2最终结果：{_}全集上的预测订货量及时间效应系数')
 
 
-    # 使用ref评估最后一周，即预测期的指标
     sm_qielei_all = sm_qielei_all[['busdate', 'amount', 'amount_origin']].rename(columns={'busdate': '销售日期', 'amount': '实际销量', 'amount_origin': '原始销量'})
     sm_qielei_all = pd.merge(sm_qielei_all, all_set, on='销售日期', how='left')
     sm_qielei_seg = sm_qielei_all[sm_qielei_all['销售日期'] >= str(sm_qielei_all['销售日期'].max().year)]
-
-    res = ref.regression_evaluation_single(y_true=sm_qielei_seg['实际销量'][-periods:].values, y_pred=sm_qielei_seg['预测销量'][-periods:].values)
-    accu_sin = ref.accuracy_single(y_true=sm_qielei_seg['实际销量'][-periods:].values, y_pred=sm_qielei_seg['预测销量'][-periods:].values)
-    metrics_values = [accu_sin] + list(res[:-2])
-    metrics_names = ['AA', 
-    'MAPE', 'SMAPE', 'RMSPE', 'MTD_p2',
-    'EMLAE', 'MALE', 'MAE', 'RMSE', 'MedAE', 'MTD_p1',
-    'MSE', 'MSLE',
-    'VAR', 'R2', 'PR', 'SR', 'KT', 'WT', 'MGC']
-    metrics = pd.Series(data=metrics_values, index=metrics_names, name='评估指标值')
-    metrics = metrics.round(4)
-    metrics.to_excel(output_path + f"\{_}_第一次决策的20种评估指标计算结果.xlsx", index=True, encoding='utf-8-sig', sheet_name=f'{_}20种评估指标的取值')
-    print(f'metrics: \n {metrics}', '\n')
 
     # 作图比较原始销量和预测销量，以及预测销量的置信区间，并输出保存图片
     fig = plt.figure(figsize=(12, 6))
@@ -381,9 +576,9 @@ for _ in acct_sm_loss['sm_sort_name'].unique():
     plt.show()
 
 
-    # 第二轮订货定价优化
+    # 第二轮预测和定价
     qielei_prophet_price = sm_qielei[['busdate', 'sum_price']].rename(columns={'busdate': 'ds', 'sum_price': 'y'})
-    m_price = Prophet(seasonality_mode='multiplicative', holidays_prior_scale=10, seasonality_prior_scale=10, mcmc_samples=mcmc_samples, interval_width=interval_width)
+    m_price = Prophet(seasonality_mode=seasonality_mode, holidays_prior_scale=10, seasonality_prior_scale=10, mcmc_samples=mcmc_samples, interval_width=interval_width)
     m_price.add_country_holidays(country_name='CN')
     m_price.add_seasonality(name='weekly', period=7, fourier_order=10, prior_scale=10)
     m_price.add_seasonality(name='yearly', period=365, fourier_order=3, prior_scale=10)
@@ -398,13 +593,13 @@ for _ in acct_sm_loss['sm_sort_name'].unique():
     fig2.savefig(output_path + f"\{_}_fit_revenue_components.svg", dpi=300, bbox_inches='tight')
     # if the "yhat" column in forecast_price <= 0, then replace it with the mean of last 7 days' "yhat" before it
     forecast_price['yhat'] = forecast_price['yhat'].apply(lambda x: max(forecast_price['yhat'].rolling(7, min_periods=1).mean().iloc[-1], np.random.uniform(0, max(forecast_price['yhat'].median(), 0.1))) if x < 0 else x)
-    
+
     forecast_price.to_excel(output_path + f"\{_}_销售额时序分解.xlsx", index=False, encoding='utf-8-sig', sheet_name=f'{_}预测销售额')
 
 
     sm_qielei['unit_cost'] = sm_qielei['sum_cost'] / sm_qielei['amount']
     qielei_prophet_cost = sm_qielei[['busdate', 'unit_cost']].rename(columns={'busdate': 'ds', 'unit_cost': 'y'})
-    m_cost = Prophet(yearly_seasonality=True, weekly_seasonality=True, seasonality_mode='multiplicative', holidays_prior_scale=10, seasonality_prior_scale=10, mcmc_samples=mcmc_samples, interval_width=interval_width)
+    m_cost = Prophet(yearly_seasonality=True, weekly_seasonality=True, seasonality_mode=seasonality_mode, holidays_prior_scale=10, seasonality_prior_scale=10, mcmc_samples=mcmc_samples, interval_width=interval_width)
     m_cost.add_country_holidays(country_name='CN')
     m_cost.fit(qielei_prophet_cost)
     future_cost = m_cost.make_future_dataframe(periods=periods)
@@ -448,15 +643,6 @@ for _ in acct_sm_loss['sm_sort_name'].unique():
     forecast_output['销售日期'] = forecast_output['销售日期'].dt.date
     forecast_output.to_excel(output_path + f"\{_}_在预测期每日的预测销售额、预测单价、预测成本、预测毛利率、加载毛利率时间效应的第二次报童订货量和加载销量时间效应的最终订货量.xlsx", index=False, encoding='utf-8-sig', sheet_name=f'问题2最终结果：{_}在预测期每日的预测销售额、预测单价、预测成本、预测毛利率、加载毛利率时间效应的第二次报童订货量和加载销量时间效应的最终订货量')
 
-    # 评估指标
-    res_new = ref.regression_evaluation_single(y_true=sm_qielei_all['实际销量'][-periods:].values, y_pred=forecast['加载销量时间效应的最终订货量'][-periods:].values)
-    accu_sin_new = ref.accuracy_single(y_true=sm_qielei_all['实际销量'][-periods:].values, y_pred=forecast['加载销量时间效应的最终订货量'][-periods:].values)
-    metrics_values_new = [accu_sin_new] + list(res_new[:-2])
-    metrics_new = pd.Series(data=metrics_values_new, index=metrics_names, name='新评估指标值')
-    metrics_new = metrics_new.round(4)
-    metrics_new.to_excel(output_path + f"\{_}_加载销量时间效应的最终订货量的20种评估指标计算结果.xlsx", index=True, encoding='utf-8-sig', sheet_name=f'{_}加载销量时间效应的最终订货量的评估指标值')
-    print(f'metrics_new: \n {metrics_new}', '\n')
-
     fig = plt.figure(figsize=(12, 6))
     ax = fig.add_subplot(111)
     ax.plot(sm_qielei_all['销售日期'][-output_index:], sm_qielei_all['原始销量'][-output_index:], marker='o', label='原始销量')
@@ -469,4 +655,5 @@ for _ in acct_sm_loss['sm_sort_name'].unique():
     plt.savefig(output_path + f"\{_}_forecast_final.svg", dpi=300, bbox_inches='tight')
     plt.show()
 
-print('question_2运行完毕！', '\n\n\n')
+print('question_3运行完毕！', '\n\n')
+    
