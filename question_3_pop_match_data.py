@@ -46,12 +46,13 @@ interval_width = 0.95 # prophet的置信区间宽度
 first_day = '2023-06-24'
 last_day = '2023-06-30'
 amount_min = 2.5 # 最小陈列量
-code_num_max = 30
-code_num_min = 24
+code_num_max = 33
+code_num_min = 27
 mcmc_samples = 0 # mcmc采样次数
 coef = round(1/3, 2) # 相关系数排序分组时的阈值
 corr_neg = -0.2 # 销量与售价的负相关性阈值
 seasonality_mode = 'multiplicative'
+days = 30
 
 distributions = ['cauchy', 'chi2', 'expon', 'exponpow', 'gamma', 'lognorm', 'norm', 'powerlaw', 'irayleigh', 'uniform']
 input_path = output_path_self_use + "\\"
@@ -298,7 +299,7 @@ for i, data in enumerate(list_df_avg):
 # 第二部分：计算各单品的最优订购量和最优售价
 # 考虑损耗率
 acct_code_sm_loss_cost['amount_origin'] = acct_code_sm_loss_cost['amount']
-acct_code_sm_loss_cost['amount'] = acct_code_sm_loss_cost['amount'] * (1 + acct_code_sm_loss_cost['loss_rate']/100)
+acct_code_sm_loss_cost['amount'] = acct_code_sm_loss_cost['amount'] / (1 - acct_code_sm_loss_cost['loss_rate']/100)
 acct_code_sm_loss_cost['sum_cost'] = acct_code_sm_loss_cost['amount'] * acct_code_sm_loss_cost['unit_cost']
 acct_code_sm_loss_cost['sum_price'] = acct_code_sm_loss_cost['amount'] * acct_code_sm_loss_cost['price']
 acct_code_sm_loss_cost['profit'] = (acct_code_sm_loss_cost['sum_price'] - acct_code_sm_loss_cost['sum_cost']) / acct_code_sm_loss_cost['sum_price']
@@ -310,15 +311,27 @@ else:
 acct_code_sm_loss_cost.drop(columns=['price', 'profit'], inplace=True)
 
 
-for _ in acct_code_sm_loss_cost['name'].unique():
-    sm_qielei_all = acct_code_sm_loss_cost[acct_code_sm_loss_cost['name'] == _]
+for i in acct_code_sm_loss_cost['name'].unique():
+
+    acct_ori = acct_code_sm_loss_cost[acct_code_sm_loss_cost['name'] == i]
+    acct_ori['price'] = acct_ori['sum_price'] / acct_ori['amount']
+    acct_ori['profit'] = (acct_ori['sum_price'] - acct_ori['sum_cost']) / acct_ori['sum_price']
+    sm_qielei_all = acct_code_sm_loss_cost[acct_code_sm_loss_cost['name'] == i]
+    
+    amount_base = np.mean([sm_qielei_all['amount'][-days:].mean(), np.percentile(sm_qielei_all['amount'][-days:], 50)])
+    amount_origin_base = np.mean([sm_qielei_all['amount_origin'][-days:].mean(), np.percentile(sm_qielei_all['amount_origin'][-days:], 50)])
+
     # 用sm_qielei_all的最后一行复制出periods行，并将busdate分别加上1、2、3、4、5、6、7，得到预测期的日期
     sm_qielei_all = sm_qielei_all.append([sm_qielei_all.iloc[-1, :]] * (periods), ignore_index=True)
     sm_qielei_all['busdate'][-(periods):] = sm_qielei_all['busdate'][-(periods):] + pd.to_timedelta(np.arange(1, periods+1), unit='d')
-    sm_qielei_all[-(periods):]['amount'] += np.random.normal(0, max(0, min(sm_qielei_all['amount'].std()**0.5, sm_qielei_all['amount'].mean()/10)), periods) # 为预测期的销量添加随机噪声，防止后面metrics计算中MGC报错
-    sm_qielei_all[-(periods):]['amount_origin'] += np.random.normal(0, max(0, min(sm_qielei_all['amount_origin'].std()**0.5, sm_qielei_all['amount_origin'].mean()/10)), periods)
+
+
+    sm_qielei_all.loc[sm_qielei_all.index[-periods:], 'amount'] = amount_base + np.random.normal(0, sm_qielei_all['amount'].std() / sm_qielei_all['amount'].mean(), periods) # 为预测期的销量添加随机噪声，防止后面metrics计算中MGC报错
+    sm_qielei_all.loc[sm_qielei_all.index[-periods:], 'amount_origin'] = amount_origin_base + np.random.normal(0, sm_qielei_all['amount_origin'].std() / sm_qielei_all['amount_origin'].mean(), periods)
+
     # 将sm_qielei_all中的amount_origin列的值赋给amount列，如果amount列的值小于amount_origin列的值
-    sm_qielei_all[-(periods):].loc[sm_qielei_all[-(periods):]['amount'] < sm_qielei_all[-(periods):]['amount_origin'], 'amount'] = sm_qielei_all[-(periods):]['amount_origin']
+    sm_qielei_all[-(periods):].loc[sm_qielei_all[-(periods):]['amount'] < sm_qielei_all[-(periods):]['amount_origin'], 'amount'] = sm_qielei_all[-(periods):]['amount_origin'] + np.random.random(periods)
+
     
     # 将全集上busdate缺失不连续的行用插值法进行填充
     sm_qielei_all_col = sm_qielei_all.set_index('busdate').resample('D').mean().interpolate(method='linear').reset_index()
@@ -327,18 +340,18 @@ for _ in acct_code_sm_loss_cost['name'].unique():
     sm_qielei_all.drop(columns=['amount_y', 'sum_cost_y', 'sum_price_y', 'unit_cost_y', 'loss_rate_y', 'amount_origin_y'], inplace=True)
     sm_qielei_all.rename(columns={'amount_x': 'amount', 'sum_cost_x': 'sum_cost', 'sum_price_x': 'sum_price', 'unit_cost_x': 'unit_cost', 'loss_rate_x': 'loss_rate', 'amount_origin_x': 'amount_origin'}, inplace=True)
 
-    print(f"{_}经过差值后存在空值的字段有:\n{sm_qielei_all.columns[sm_qielei_all.isnull().sum()>0].to_list()}\n")
+    print(f"{i}经过差值后存在空值的字段有:\n{sm_qielei_all.columns[sm_qielei_all.isnull().sum()>0].to_list()}\n")
     pd.set_option('display.max_rows', 20)
     print(f"存在空值的字段的数据类型为：\n{sm_qielei_all[sm_qielei_all.columns[sm_qielei_all.isnull().sum()>0]].dtypes}\n")
     pd.set_option('display.max_rows', 7)
-    print(f"{_}经过差值后存在空值的行数为：{sm_qielei_all.isnull().T.any().sum()}", '\n')
+    print(f"{i}经过差值后存在空值的行数为：{sm_qielei_all.isnull().T.any().sum()}", '\n')
     # 将sm_qielei_all中存在空值的那些字段的空值用众数填充
     for col in sm_qielei_all.columns[sm_qielei_all.isnull().sum()>0]:
         sm_qielei_all[col].fillna(sm_qielei_all[col].mode()[0], inplace=True)
-    print(f"{_}经过众数填充后存在空值的行数为：{sm_qielei_all.isnull().T.any().sum()}", '\n')
+    print(f"{i}经过众数填充后存在空值的行数为：{sm_qielei_all.isnull().T.any().sum()}", '\n')
 
     sm_qielei_all = sm_qielei_all.round(3)
-    sm_qielei_all.to_excel(os.path.join(output_path, f"{_}_在全集上的样本.xlsx"), index=False, sheet_name=f'{_}在全集上的样本')
+    sm_qielei_all.to_excel(os.path.join(output_path, f"{i}_在全集上的样本.xlsx"), index=False, sheet_name=f'{i}在全集上的样本')
     # 获取茄类在训练集上的样本
     sm_qielei = sm_qielei_all[:-periods]
     # 将训练集上非正毛利的异常样本的sum_price重新赋值
@@ -347,7 +360,7 @@ for _ in acct_code_sm_loss_cost['name'].unique():
         raise ValueError('There are still some negative profit in sm_qielei')
 
     sm_qielei = sm_qielei.round(3)
-    sm_qielei.to_excel(output_path + f"\{_}_在训练集上的样本.xlsx", index=False, sheet_name=f'{_}在训练集上的样本')
+    sm_qielei.to_excel(output_path + f"\{i}_在训练集上的样本.xlsx", index=False, sheet_name=f'{i}在训练集上的样本')
 
 
     # 对sm_qielei_all中数值型变量的列：amount，sum_cost和sum_price画时序图
@@ -358,7 +371,7 @@ for _ in acct_code_sm_loss_cost['name'].unique():
         plt.xticks(rotation=45)
         plt.xlabel('busdate')
         plt.ylabel(col)
-        plt.title(f'{_}Time Series Graph')
+        plt.title(f'{i}Time Series Graph')
         plt.show()
 
     # 输出这三条时序图中，非空数据的起止日期，用循环实现
@@ -380,8 +393,8 @@ for _ in acct_code_sm_loss_cost['name'].unique():
     plt.show()
     fig2 = m_amount.plot_components(forecast_amount)
     plt.show()
-    fig1.savefig(output_path + f"\{_}_fit_amount.svg", dpi=300, bbox_inches='tight')
-    fig2.savefig(output_path + f"\{_}_fit_amount_components.svg", dpi=300, bbox_inches='tight')
+    fig1.savefig(output_path + f"\{i}_fit_amount.svg", dpi=300, bbox_inches='tight')
+    fig2.savefig(output_path + f"\{i}_fit_amount_components.svg", dpi=300, bbox_inches='tight')
 
     holiday_effect = forecast_amount[['ds', 'holidays', 'holidays_lower', 'holidays_upper']]
     weekly_effect = forecast_amount[['ds', 'weekly', 'weekly_lower', 'weekly_upper']]
@@ -419,7 +432,7 @@ for _ in acct_code_sm_loss_cost['name'].unique():
     else:
         qielei_prophet_amount[['holiday_effect','weekly_effect','yearly_effect','total_effect']] = qielei_prophet_amount[['holiday_effect','weekly_effect','yearly_effect','total_effect']].apply(lambda x: np.clip(x, np.percentile(x, 10), np.percentile(x, 90)))
     qielei_prophet_amount = qielei_prophet_amount.round(3)
-    qielei_prophet_amount.to_excel(os.path.join(output_path, f"{_}_销量时序分解.xlsx"), index=False, sheet_name=f'{_}用历史销量计算出的时间效应，合并到训练集中')
+    qielei_prophet_amount.to_excel(os.path.join(output_path, f"{i}_销量时序分解.xlsx"), index=False, sheet_name=f'{i}用历史销量计算出的时间效应，合并到训练集中')
 
     # 验证prophet分解出的各个分项的计算公式
     print(f"在乘法模式下，trend*(1+multiplicative_terms)=yhat, 即：sum(forecast['trend']*(1+forecast['multiplicative_terms'])-forecast['yhat']) = {sum(forecast_amount['trend']*(1+forecast_amount['multiplicative_terms'])-forecast_amount['yhat'])}", '\n')
@@ -436,17 +449,17 @@ for _ in acct_code_sm_loss_cost['name'].unique():
     plt.plot(sm_qielei['busdate'], sm_qielei['amt_no_effect'], label='剔除时间效应后销量')
     plt.xticks(rotation=45)
     plt.xlabel('销售日期')
-    plt.ylabel(f'{_}销量')
-    plt.title(f'{_}剔除时间效应前后，销量时序对比')
+    plt.ylabel(f'{i}销量')
+    plt.title(f'{i}剔除时间效应前后，销量时序对比')
     plt.legend(loc='best')
     plt.show()
-    fig.savefig(output_path + f"\{_}_剔除时间效应前后，{_}销量时序对比.svg", dpi=300, bbox_inches='tight')
+    fig.savefig(output_path + f"\{i}_剔除时间效应前后，{i}销量时序对比.svg", dpi=300, bbox_inches='tight')
 
     # 计算sm_qielei['amt_no_effect']和sm_qielei['amount']的统计信息
     sm_qielei_amount_effect_compare = sm_qielei[['amount', 'amt_no_effect']].describe()
     print(sm_qielei_amount_effect_compare.round(3), '\n')
     sm_qielei_amount_effect_compare = sm_qielei_amount_effect_compare.round(3)
-    sm_qielei_amount_effect_compare.to_excel(output_path + f"\{_}_剔除时间效应前后，历史销量的描述性统计信息对比.xlsx", sheet_name=f'{_}剔除时间效应前后，历史销量的描述性统计信息对比')
+    sm_qielei_amount_effect_compare.to_excel(output_path + f"\{i}_剔除时间效应前后，历史销量的描述性统计信息对比.xlsx", sheet_name=f'{i}剔除时间效应前后，历史销量的描述性统计信息对比')
     # 计算sm_qielei['amt_no_effect']和sm_qielei['amount']的相关系数
     print(sm_qielei[['amount', 'amt_no_effect']].corr().round(4), '\n')
 
@@ -458,17 +471,17 @@ for _ in acct_code_sm_loss_cost['name'].unique():
     sns.distplot(sm_qielei_amt_ext, ax=ax, label='extended')
     sns.distplot(sm_qielei['amt_no_effect'].values, ax=ax, label='original')
     ax.legend()
-    plt.title(f'{_}数据扩增前后，历史销量的概率密度函数对比图')
+    plt.title(f'{i}数据扩增前后，历史销量的概率密度函数对比图')
     plt.show()
-    fig.savefig(output_path + f"\{_}_数据扩增前后，历史销量的概率密度函数对比图.svg", dpi=300, bbox_inches='tight')
+    fig.savefig(output_path + f"\{i}_数据扩增前后，历史销量的概率密度函数对比图.svg", dpi=300, bbox_inches='tight')
 
     # 给出sm_qielei_amt_ext和sm_qielei['amt_no_effect'].values的描述性统计
-    sm_qielei_amt_ext_describe = pd.Series(sm_qielei_amt_ext, name='sm_qielei_amt_ext_describe').describe()
+    sm_qielei_amt_ext_describe = pd.Series(sm_qielei_amt_ext, name=f'sm_{i}_amt_ext_describe').describe()
     sm_qielei_amt_describe = sm_qielei['amt_no_effect'].describe()
-    sm_qielei_amt_ext_compare = pd.concat([sm_qielei_amt_describe, sm_qielei_amt_ext_describe], axis=1).rename(columns={'amt_no_effect': 'sm_qielei_amt_describe'})
+    sm_qielei_amt_ext_compare = pd.concat([sm_qielei_amt_describe, sm_qielei_amt_ext_describe], axis=1).rename(columns={'amt_no_effect': f'sm_{i}_amt_describe'})
     print(sm_qielei_amt_ext_compare.round(2), '\n')
     sm_qielei_amt_ext_compare = sm_qielei_amt_ext_compare.round(2)
-    sm_qielei_amt_ext_compare.to_excel(output_path + f"\{_}_数据扩增前后，历史销量的描述性统计信息对比.xlsx", sheet_name=f'{_}数据扩增前后，历史销量的描述性统计信息对比')
+    sm_qielei_amt_ext_compare.to_excel(output_path + f"\{i}_数据扩增前后，历史销量的描述性统计信息对比.xlsx", sheet_name=f'{i}数据扩增前后，历史销量的描述性统计信息对比')
 
     # 给出sm_qielei_amt_ext和sm_qielei['amt_no_effect'].values的Shapiro-Wilk检验结果
     stat, p = stats.shapiro(sm_qielei_amt_ext)
@@ -500,27 +513,27 @@ for _ in acct_code_sm_loss_cost['name'].unique():
     comparison_of_distributions_qielei = f.summary(Nbest=len(distributions))
     print(f'\n{comparison_of_distributions_qielei.round(4)}\n')
     comparison_of_distributions_qielei = comparison_of_distributions_qielei.round(4)
-    comparison_of_distributions_qielei.to_excel(output_path + f"\{_}_comparison_of_distributions.xlsx", sheet_name=f'{_}_comparison of distributions')
+    comparison_of_distributions_qielei.to_excel(output_path + f"\{i}_comparison_of_distributions.xlsx", sheet_name=f'{i}_comparison of distributions')
 
     name = list(f.get_best().keys())[0]
     print(f'best distribution: {name}''\n')
     figure = plt.gcf()  # 获取当前图像
-    plt.xlabel(f'用于拟合分布的，{_}数据扩增后的历史销量')
+    plt.xlabel(f'用于拟合分布的，{i}数据扩增后的历史销量')
     plt.ylabel('Probability')
-    plt.title(f'{_} comparison of distributions_qielei')
+    plt.title(f'{i} comparison of distributions')
     plt.show()
-    figure.savefig(output_path + f"\{_}_comparison of distributions.svg")
+    figure.savefig(output_path + f"\{i}_comparison of distributions.svg")
     figure.clear()  # 先画图plt.show，再释放内存
 
     figure = plt.gcf()  # 获取当前图像
     plt.plot(f.x, f.y, 'b-.', label='f.y')
     plt.plot(f.x, f.fitted_pdf[name], 'r-', label="f.fitted_pdf")
-    plt.xlabel(f'用于拟合分布的，{_}数据扩增后的历史销量')
+    plt.xlabel(f'用于拟合分布的，{i}数据扩增后的历史销量')
     plt.ylabel('Probability')
     plt.title(f'best distribution: {name}')
     plt.legend()
     plt.show()
-    figure.savefig(output_path + f"\{_}_best distribution.svg")
+    figure.savefig(output_path + f"\{i}_best distribution.svg")
     figure.clear()
 
 
@@ -555,7 +568,7 @@ for _ in acct_code_sm_loss_cost['name'].unique():
     all_set['训练集平均毛利率'] = profit_avg
     all_set['第一次计算的平稳订货量'] = q_steady
     all_set = all_set.round(3)
-    all_set.to_excel(output_path + f"\{_}_全集上的第一次决策结果及时间效应系数.xlsx", index=False, encoding='utf-8-sig', sheet_name=f'问题2最终结果：{_}全集上的预测订货量及时间效应系数')
+    all_set.to_excel(output_path + f"\{i}_全集上的第一次决策结果及时间效应系数.xlsx", index=False, encoding='utf-8-sig', sheet_name=f'问题2最终结果：{i}全集上的预测订货量及时间效应系数')
 
 
     sm_qielei_all = sm_qielei_all[['busdate', 'amount', 'amount_origin']].rename(columns={'busdate': '销售日期', 'amount': '实际销量', 'amount_origin': '原始销量'})
@@ -570,9 +583,9 @@ for _ in acct_code_sm_loss_cost['name'].unique():
     ax.fill_between(sm_qielei_seg['销售日期'][-output_index:], forecast_amount['yhat_lower'][-output_index:], forecast_amount['yhat_upper'][-output_index:], color='grey', alpha=0.2, label=f'{int(interval_width*100)}%的置信区间')
     ax.set_xlabel('销售日期')
     ax.set_ylabel('销量')
-    ax.set_title(f'{_}预测期第一次订货量时序对比图')
+    ax.set_title(f'{i}预测期第一次订货量时序对比图')
     ax.legend()
-    plt.savefig(output_path + f"\{_}_forecast.svg", dpi=300, bbox_inches='tight')
+    plt.savefig(output_path + f"\{i}_forecast.svg", dpi=300, bbox_inches='tight')
     plt.show()
 
 
@@ -589,12 +602,10 @@ for _ in acct_code_sm_loss_cost['name'].unique():
     plt.show()
     fig2 = m_price.plot_components(forecast_price)
     plt.show()
-    fig1.savefig(output_path + f"\{_}_fit_revenue.svg", dpi=300, bbox_inches='tight')
-    fig2.savefig(output_path + f"\{_}_fit_revenue_components.svg", dpi=300, bbox_inches='tight')
+    fig1.savefig(output_path + f"\{i}_fit_revenue.svg", dpi=300, bbox_inches='tight')
+    fig2.savefig(output_path + f"\{i}_fit_revenue_components.svg", dpi=300, bbox_inches='tight')
     # if the "yhat" column in forecast_price <= 0, then replace it with the mean of last 7 days' "yhat" before it
     forecast_price['yhat'] = forecast_price['yhat'].apply(lambda x: max(forecast_price['yhat'].rolling(7, min_periods=1).mean().iloc[-1], np.random.uniform(0, max(forecast_price['yhat'].median(), 0.1))) if x < 0 else x)
-
-    forecast_price.to_excel(output_path + f"\{_}_销售额时序分解.xlsx", index=False, encoding='utf-8-sig', sheet_name=f'{_}预测销售额')
 
 
     sm_qielei['unit_cost'] = sm_qielei['sum_cost'] / sm_qielei['amount']
@@ -608,27 +619,35 @@ for _ in acct_code_sm_loss_cost['name'].unique():
     plt.show()
     fig2 = m_cost.plot_components(forecast_cost)
     plt.show()
-    fig1.savefig(output_path + f"\{_}_fit_unit_cost.svg", dpi=300, bbox_inches='tight')
-    fig2.savefig(output_path + f"\{_}_fit_unit_cost_components.svg", dpi=300, bbox_inches='tight')
-    forecast_cost.to_excel(output_path + f"\{_}_单位成本时序分解.xlsx", index=False, encoding='utf-8-sig', sheet_name=f'{_}预测单位成本')
+    fig1.savefig(output_path + f"\{i}_fit_unit_cost.svg", dpi=300, bbox_inches='tight')
+    fig2.savefig(output_path + f"\{i}_fit_unit_cost_components.svg", dpi=300, bbox_inches='tight')
+    forecast_cost.to_excel(output_path + f"\{i}_单位成本时序分解.xlsx", index=False, encoding='utf-8-sig', sheet_name=f'{i}预测单位成本')
 
-
+    
     forecast = forecast_price[['ds', 'yhat']][-periods:]
     forecast['price'] = forecast['yhat'] / q_star
+    if (forecast['price'].mean() > acct_ori['price'].mean() + 3 * acct_ori['price'].std()) or (forecast['price'].mean() <= max(0, acct_ori['price'].mean() - 3 * acct_ori['price'].std())):
+        forecast['price'] = acct_ori['price'].mean() + np.random.randn(len(forecast['price'])) * acct_ori['price'].std() / acct_ori['price'].mean()
     forecast['unit_cost'] = forecast_cost['yhat'][-periods:]
+    if (forecast['unit_cost'].mean() > acct_ori['unit_cost'].mean() + 3 * acct_ori['unit_cost'].std()) or (forecast['unit_cost'].mean() <= max(0, acct_ori['unit_cost'].mean() - 3 * acct_ori['unit_cost'].std())): 
+        forecast['unit_cost'] = acct_ori['unit_cost'].mean() + np.random.randn(len(forecast['unit_cost'])) * acct_ori['unit_cost'].std() / acct_ori['unit_cost'].mean()
     forecast['profit'] = (forecast['price'] - forecast['unit_cost']) / forecast['price']
+    if (forecast['profit'].mean() > acct_ori['profit'].mean() + 3 * acct_ori['profit'].std()) or (forecast['profit'].mean() <= max(0, acct_ori['profit'].mean() - 3 * acct_ori['profit'].std())):
+        forecast['profit'] = acct_ori['profit'].mean() + np.random.randn(len(forecast['profit'])) * acct_ori['profit'].std() / acct_ori['profit'].mean()
     # 将forecast['profit']中<=0的值，替换为平均毛利率
     forecast['profit'] = forecast['profit'].apply(lambda x: max(profit_avg, 0.01) if x <= 0 else x)
+
 
     # 用newsvendor模型计算sm_qielei_amt_ext的平稳订货量q_steady
     f_star = fitter.Fitter(sm_qielei_amt_ext, distributions='gamma')
     f_star.fit()
     print(f'拟合分布的最优参数是: \n {np.array(f_star.fitted_param["gamma"]).round(4)}', '\n')
     q_steady_star = []
-    for i in range(len(forecast['profit'])):
-        q_steady_star.append(stats.gamma.ppf(forecast['profit'].values[i], *f_star.fitted_param['gamma']))
+    for j in range(len(forecast['profit'])):
+        q_steady_star.append(stats.gamma.ppf(forecast['profit'].values[j], *f_star.fitted_param['gamma']))
     q_steady_star = np.array(q_steady_star)
     print(f'q_steady_star = {q_steady_star.round(3)}', '\n')
+    pd.Series(f_star.fitted_param['gamma']).to_excel(output_path + f"\{i}_第二次定价订货的最优分布参数.xlsx", index=True, encoding='utf-8-sig', sheet_name=f'{i}第二次定价订货的最优分布参数')
 
     all_set['total_effect'] = all_set[['holiday_effect', 'weekly_effect_avg', 'yearly_effect_avg']].sum(axis=1)
     q_star_new = q_steady_star * (1 + all_set['total_effect'][-periods:])
@@ -641,19 +660,28 @@ for _ in acct_code_sm_loss_cost['name'].unique():
     forecast['预测毛利率'] = forecast['预测毛利率'].apply(lambda x: round(x, 3))
     forecast_output = forecast.iloc[:output_index]
     forecast_output['销售日期'] = forecast_output['销售日期'].dt.date
-    forecast_output.to_excel(output_path + f"\{_}_在预测期每日的预测销售额、预测单价、预测成本、预测毛利率、加载毛利率时间效应的第二次报童订货量和加载销量时间效应的最终订货量.xlsx", index=False, encoding='utf-8-sig', sheet_name=f'问题2最终结果：{_}在预测期每日的预测销售额、预测单价、预测成本、预测毛利率、加载毛利率时间效应的第二次报童订货量和加载销量时间效应的最终订货量')
+
+    # 用均方根求amount_base和forecast_output['加载销量时间效应的最终订货量']的平均数
+    forecast_output['加载销量时间效应的最终订货量'] = pd.Series(np.sqrt((amount_base**2 + forecast_output['加载销量时间效应的最终订货量']**2) / 2) + np.random.rand(len(forecast_output['加载销量时间效应的最终订货量'])) * 1/10 * acct_ori['amount'].std()).astype(int)
+    forecast_output['预测金额'] = forecast_output['预测单价'] * forecast_output['加载销量时间效应的最终订货量']
+    forecast_output['预测毛利率'] = (forecast_output['预测单价'] - forecast_output['预测成本单价']) / forecast_output['预测单价']
+    forecast_output['预测毛利率'] = forecast_output['预测毛利率'].apply(lambda x: round(x, 4)*100)
+    forecast_output.rename(columns={'预测毛利率': '预测毛利率(%)'}, inplace=True)
+
+    forecast_output.to_excel(output_path + f"\{i}_在预测期每日的预测销售额、预测单价、预测成本、预测毛利率、加载毛利率时间效应的第二次报童订货量和加载销量时间效应的最终订货量.xlsx", index=False, encoding='utf-8-sig', sheet_name=f'问题2最终结果：{i}在预测期每日的预测销售额、预测单价、预测成本、预测毛利率、加载毛利率时间效应的第二次报童订货量和加载销量时间效应的最终订货量')
+    forecast_price.loc[forecast_price[-periods:].index, 'yhat'] = forecast_output['预测金额'].values
+    forecast_price.to_excel(output_path + f"\{i}_销售额时序分解.xlsx", index=False, encoding='utf-8-sig', sheet_name=f'{i}预测销售额时序分解')
 
     fig = plt.figure(figsize=(12, 6))
     ax = fig.add_subplot(111)
     ax.plot(sm_qielei_all['销售日期'][-output_index:], sm_qielei_all['原始销量'][-output_index:], marker='o', label='原始销量')
-    ax.plot(forecast['销售日期'][-output_index:], forecast['加载销量时间效应的最终订货量'][-output_index:], marker='o', label='加载销量时间效应的最终订货量')
+    ax.plot(forecast_output['销售日期'][-output_index:], forecast_output['加载销量时间效应的最终订货量'][-output_index:], marker='o', label='加载销量时间效应的最终订货量')
     ax.fill_between(sm_qielei_all['销售日期'][-output_index:], forecast_price['yhat_lower'][-output_index:] / forecast['预测单价'], forecast_price['yhat_upper'][-output_index:] / forecast['预测单价'], color='grey', alpha=0.2, label=f'{int(interval_width*100)}%的置信区间')
     ax.set_xlabel('销售日期')
     ax.set_ylabel('销量')
-    ax.set_title(f'{_}预测期加载销量时间效应的最终订货量对比图')
+    ax.set_title(f'{i}预测期加载销量时间效应的最终订货量对比图')
     ax.legend()
-    plt.savefig(output_path + f"\{_}_forecast_final.svg", dpi=300, bbox_inches='tight')
+    plt.savefig(output_path + f"\{i}_forecast_final.svg", dpi=300, bbox_inches='tight')
     plt.show()
 
 print('question_3运行完毕！', '\n\n')
-    
