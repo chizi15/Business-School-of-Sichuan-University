@@ -12,10 +12,16 @@ pd.set_option('display.max_rows', 8)
 
 
 distributions = ['cauchy', 'chi2', 'expon', 'exponpow', 'gamma', 'lognorm', 'norm', 'powerlaw', 'irayleigh', 'uniform']
-input_path = output_path_self_use + "\\"
+input_path = output_path_self_use
 output_path = r"D:\Work info\SCU\MathModeling\2023\data\processed\question_1" + "\\"
-if not os.path.exists(output_path):
+try:
+    os.makedirs(input_path)
+except Exception as e:
+    print('创建文件夹失败！\n', e)
+try:
     os.makedirs(output_path)
+except Exception as e:
+    print('创建文件夹失败！\n', e)
 
 
 # 读取数据

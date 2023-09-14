@@ -1,5 +1,7 @@
 # -*- coding: utf-8 -*-
-from prophet import Prophet
+# from prophet import Prophet
+from gluonts.ext.prophet import ProphetPredictor
+# from pycaret.time_series import TSForecastingExperiment
 import pandas as pd
 import numpy as np
 from scipy import stats
@@ -106,6 +108,10 @@ for i in acct_sm_loss['sm_sort_name'].unique():
     acct_ori = acct_sm_loss[acct_sm_loss['sm_sort_name'] == i]
     acct_ori['price'] = acct_ori['sum_price'] / acct_ori['amount']
     sm_qielei_all = acct_sm_loss[acct_sm_loss['sm_sort_name'] == i]
+
+    # ts = TSForecastingExperiment()
+    # ts.setup(data=sm_qielei_all, target='amount')
+    # Prophet = ts.create_model(model='prophet', seasonality_mode=seasonality_mode, mcmc_samples=mcmc_samples, interval_width=interval_width)
     
     amount_base = np.mean([sm_qielei_all['amount'][-days:].mean(), np.percentile(sm_qielei_all['amount'][-days:], 50)])
     amount_origin_base = np.mean([sm_qielei_all['amount_origin'][-days:].mean(), np.percentile(sm_qielei_all['amount_origin'][-days:], 50)])
@@ -171,7 +177,7 @@ for i in acct_sm_loss['sm_sort_name'].unique():
 
     # 用prophet获取训练集上的星期效应系数、节日效应系数和年季节性效应系数
     qielei_prophet_amount = sm_qielei[['busdate', 'amount']].rename(columns={'busdate': 'ds', 'amount': 'y'})
-    m_amount = Prophet(yearly_seasonality=True, weekly_seasonality=True, seasonality_mode='multiplicative', holidays_prior_scale=10, seasonality_prior_scale=10, mcmc_samples=mcmc_samples, interval_width=interval_width)
+    m_amount = ProphetPredictor(yearly_seasonality=True, weekly_seasonality=True, seasonality_mode='multiplicative', holidays_prior_scale=10, seasonality_prior_scale=10, mcmc_samples=mcmc_samples, interval_width=interval_width)
     m_amount.add_country_holidays(country_name='CN')
     m_amount.fit(qielei_prophet_amount)
     future_amount = m_amount.make_future_dataframe(periods=periods)
@@ -392,7 +398,7 @@ for i in acct_sm_loss['sm_sort_name'].unique():
 
     # 第二轮订货定价优化
     qielei_prophet_price = sm_qielei[['busdate', 'sum_price']].rename(columns={'busdate': 'ds', 'sum_price': 'y'})
-    m_price = Prophet(seasonality_mode='multiplicative', holidays_prior_scale=10, seasonality_prior_scale=10, mcmc_samples=mcmc_samples, interval_width=interval_width)
+    m_price = ProphetPredictor(seasonality_mode='multiplicative', holidays_prior_scale=10, seasonality_prior_scale=10, mcmc_samples=mcmc_samples, interval_width=interval_width)
     m_price.add_country_holidays(country_name='CN')
     m_price.add_seasonality(name='weekly', period=7, fourier_order=10, prior_scale=10)
     m_price.add_seasonality(name='yearly', period=365, fourier_order=3, prior_scale=10)
@@ -411,7 +417,7 @@ for i in acct_sm_loss['sm_sort_name'].unique():
 
     sm_qielei['unit_cost'] = sm_qielei['sum_cost'] / sm_qielei['amount']
     qielei_prophet_cost = sm_qielei[['busdate', 'unit_cost']].rename(columns={'busdate': 'ds', 'unit_cost': 'y'})
-    m_cost = Prophet(yearly_seasonality=True, weekly_seasonality=True, seasonality_mode='multiplicative', holidays_prior_scale=10, seasonality_prior_scale=10, mcmc_samples=mcmc_samples, interval_width=interval_width)
+    m_cost = ProphetPredictor(yearly_seasonality=True, weekly_seasonality=True, seasonality_mode='multiplicative', holidays_prior_scale=10, seasonality_prior_scale=10, mcmc_samples=mcmc_samples, interval_width=interval_width)
     m_cost.add_country_holidays(country_name='CN')
     m_cost.fit(qielei_prophet_cost)
     future_cost = m_cost.make_future_dataframe(periods=periods)

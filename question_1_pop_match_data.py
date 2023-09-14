@@ -1,3 +1,11 @@
+"""
+第一问方法概述（小分类和单品层级的处理方法相同）：
+1. 剔除销量序列的各种时间效应，此时销量序列只受到除时间外的其他因素影响，如售价；剔除售价序列的各种时间效应，此时售价序列只受到除时间外的其他因素影响，如进价。因为二者各自的时间效应不同，所以需分别剔除；也不能只剔除其一，否则剔除前后二者在逻辑上不对应。
+2. 对剔除时间效应后的销量序列和售价序列进行对数变换增强其正态性，以加强对相关系数计算时假设条件的满足程度。
+3. 使用秩相关系数计算销量序列和售价序列的相关系数，按照临界值corr_neg将各个小分类和单品分为两组。
+4. 对销量与售价负相关性强的那一组小分类或单品，按两两销量间的相关系数大小进行排序，按照临界值coef进行循环筛选和剔除，并生成进一步的分组，直到剩余的小分类或单品两两销量间的相关系数都小于coef，此时剩余的小分类或单品组成一组。此时销量与售价负相关性强的那一组被分为了n组，再加上销量与售价负相关性弱的那一组，共有n+1组。
+5. 对这n+1组小分类或单品，按销量求均值，得到每组小分类或单品的平均销量序列，以便第三问使用。
+"""
 # -*- coding: utf-8 -*-
 import pandas as pd
 import numpy as np
@@ -13,7 +21,7 @@ pd.set_option('display.max_rows', 8)
 
 # 设置全局变量
 distributions = ['cauchy', 'chi2', 'expon', 'exponpow', 'gamma', 'lognorm', 'norm', 'powerlaw', 'irayleigh', 'uniform']
-input_path = output_path_self_use + "\\"
+input_path = output_path_self_use
 output_path = r"D:\Work info\SCU\MathModeling\2023\data\processed\question_1" + "\\"
 if not os.path.exists(output_path):
     os.makedirs(output_path)
@@ -110,9 +118,9 @@ for name, data in sale_sm.groupby(['sm_sort_name']):
     figure.clear()
 
 
-# 对数变换增强正态性，以加强对相关系数计算假设条件的满足程度
-sale_sm['amount'] = sale_sm['amount'].apply(lambda x: np.log1p(x))
-sale_sm['price'] = sale_sm['price'].apply(lambda x: np.log1p(x))
+# 对数变换增强正态性，以加强对相关系数计算假设条件的满足程度；若用秩相关系数，此步骤可省略
+# sale_sm['amount'] = sale_sm['amount'].apply(lambda x: np.log1p(x))
+# sale_sm['price'] = sale_sm['price'].apply(lambda x: np.log1p(x))
 # 筛选销量与价格负相关性强的小分类
 typeA = []
 typeB = []
@@ -124,8 +132,8 @@ for code, data in sale_sm.groupby(['sm_sort_name']):
         else:
             typeB.append(code)
 # 对sale_sm['amount']和price做np.log1p的逆变换，使数据回到原来的尺度
-sale_sm['amount'] = sale_sm['amount'].apply(lambda x: np.expm1(x))
-sale_sm['price'] = sale_sm['price'].apply(lambda x: np.expm1(x))
+# sale_sm['amount'] = sale_sm['amount'].apply(lambda x: np.expm1(x))
+# sale_sm['price'] = sale_sm['price'].apply(lambda x: np.expm1(x))
 sale_sm_a = sale_sm[sale_sm['sm_sort_name'].isin(typeA)]
 sale_sm_b = sale_sm[sale_sm['sm_sort_name'].isin(typeB)]
 print(f'销量与价格的负相关性强(小于{corr_neg})的小分类一共有{sale_sm_a["sm_sort_name"].nunique()}个')
@@ -133,7 +141,7 @@ print(f'销量与价格的负相关性弱(大于等于{corr_neg})的小分类一
 sale_sm_a.to_excel(output_path + f"小分类_销售数据_销量与价格的负相关性强(小于{corr_neg})的一组.xlsx")  # 按小分类聚合后的平均销量和平均价格
 sale_sm_b.to_excel(output_path + f"小分类_销售数据_销量与价格的负相关性弱(大于等于{corr_neg})的一组.xlsx")  # 按小分类聚合后的平均销量和平均价格
 
-# 计算负相关性强的小分类序列的相关系数并画热力图。
+# 计算负相关性强的小分类序列的销量间的相关系数并画热力图。
 # 先对df行转列
 sale_sm_a_t = pd.pivot(sale_sm_a, index="busdate", columns="sm_sort_name", values="amount")
 # 计算每列间的相关性
@@ -162,7 +170,7 @@ for group in groups:
     group = set(group)-set(diff_group)
     if group:
         groups_.append(group)
-print(f'进行相关性排序，并以相关系数大于{coef}为条件进行分组后的结果\n{groups_}')
+print(f'进行相关性排序，并以销量间相关系数大于{coef}为条件进行分组后的结果\n{groups_}')
 
 # 将groups_中的集合转换为列表
 groups_ = [list(group) for group in groups_]
@@ -173,7 +181,7 @@ groups_df = pd.DataFrame(pd.Series(groups_), columns=['sm_sort_name'])
 groups_df['group'] = groups_df.index+1
 # 改变列的顺序
 groups_df = groups_df[['group', 'sm_sort_name']]
-groups_df.to_excel(output_path + f"小分类_相关性分组结果：以相关系数大于{coef}为条件.xlsx", index=False, sheet_name='最后一组是销量对价格不敏感的，前面若干组是销量对价格敏感的')  # 按小分类聚合后的平均销量和平均价格
+groups_df.to_excel(output_path + f"小分类_相关性分组结果：以销量间相关系数大于{coef}为条件.xlsx", index=False, sheet_name='最后一组由销量与价格不敏感的小分类组成；前面若干组是由销量对价格敏感的那些小分类，再经销量间相关性排序筛选分组得到')  # 按小分类聚合后的平均销量和平均价格
 
 # 对groups_中的每个组，从sale_sm中筛选出对应的数据，组成list_df
 list_df = [sale_sm[sale_sm['sm_sort_name'].isin(group)] for group in groups_]
@@ -396,4 +404,4 @@ for i, data in enumerate(list_df_avg):
     figure.savefig(output_path + f"单品_{groups_[i]}_best distribution.svg")
     figure.clear()
 
-print('question_1单品层级运行完毕！', '\n\n\n')
+print('\nquestion_1单品层级运行完毕！', '\n\n')
