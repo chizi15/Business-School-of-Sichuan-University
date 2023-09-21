@@ -54,7 +54,7 @@ corr_neg = -0.2 # 销量与售价的负相关性阈值
 seasonality_mode = 'multiplicative'
 
 distributions = ['cauchy', 'chi2', 'expon', 'exponpow', 'gamma', 'lognorm', 'norm', 'powerlaw', 'irayleigh', 'uniform']
-input_path = output_path_self_use + "\\"
+input_path = output_path_self_use
 output_path = r"D:\Work info\SCU\MathModeling\2023\data\processed\question_3" + "\\"
 if not os.path.exists(output_path):
     os.makedirs(output_path)
