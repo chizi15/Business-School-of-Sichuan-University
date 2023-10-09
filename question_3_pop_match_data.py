@@ -57,9 +57,7 @@ days = 30
 distributions = ['cauchy', 'chi2', 'expon', 'exponpow', 'gamma', 'lognorm', 'norm', 'powerlaw', 'irayleigh', 'uniform']
 input_path = output_path_self_use
 output_path = r"D:\Work info\SCU\MathModeling\2023\data\processed\question_3" + "\\"
-if not os.path.exists(output_path):
-    os.makedirs(output_path)
-
+os.makedirs(output_path, exist_ok=True)
 
 
 # 数据预处理
@@ -663,7 +661,7 @@ for i in acct_code_sm_loss_cost['name'].unique():
 
     # 用均方根求amount_base和forecast_output['加载销量时间效应的最终订货量']的平均数
     forecast_output['加载销量时间效应的最终订货量'] = pd.Series(np.sqrt((amount_base**2 + forecast_output['加载销量时间效应的最终订货量']**2) / 2) + np.random.rand(len(forecast_output['加载销量时间效应的最终订货量'])) * 1/10 * acct_ori['amount'].std()).astype(int)
-    # forecast_output['预测金额'] = forecast_output['预测单价'] * forecast_output['加载销量时间效应的最终订货量']
+    forecast_output['预测金额'] = forecast_output['预测单价'] * forecast_output['加载销量时间效应的最终订货量']
     forecast_output['预测毛利率'] = (forecast_output['预测单价'] - forecast_output['预测成本单价']) / forecast_output['预测单价']
     forecast_output['预测毛利率'] = forecast_output['预测毛利率'].apply(lambda x: round(x, 4)*100)
     forecast_output.rename(columns={'预测毛利率': '预测毛利率(%)'}, inplace=True)

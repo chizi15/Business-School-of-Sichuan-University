@@ -11,6 +11,12 @@ pd.set_option('display.max_rows', 6)
 input_path = r'D:\Work info\WestUnion\data\processed\HLJ\脱敏及筛选后样本数据\output' + '\\'
 output_path = r"D:\Work info\SCU\MathModeling\2023\data\output" + '\\'
 output_path_self_use = r"D:\Work info\SCU\MathModeling\2023\data\ZNEW_DESENS\ZNEW_DESENS\sampledata" + '\\'
+output_path_match = r"D:\Work info\SCU\MathModeling\2023\data\processed" + "\\" + "july_first" + '\\'       
+os.makedirs(input_path, exist_ok=True)
+os.makedirs(output_path, exist_ok=True)
+os.makedirs(output_path_self_use, exist_ok=True)
+os.makedirs(output_path_match, exist_ok=True)
+
 first_day = '2020-07-01'
 last_day = '2023-07-01'
 sm_sort_name = ['食用菌', '花叶类', '水生根茎类', '辣椒类', '茄类', '花菜类']
@@ -140,9 +146,6 @@ if __name__ == '__main__':
         print("data_output.py运行完毕！")
 
     elif last_day == '2023-07-01':
-        output_path_match = r"D:\Work info\SCU\MathModeling\2023\data\processed" + "\\" + "july_first" + '\\'
-        if not os.path.exists(output_path_match):
-            os.makedirs(output_path_match)
 
         code_sm = pd.read_excel(f"{input_path}" + "附件1-单品-分类.xlsx")
         code_sm[['单品编码', '分类编码']] = code_sm[['单品编码', '分类编码']].astype(str)
