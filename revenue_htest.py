@@ -51,11 +51,18 @@ def prophet_model(df, pred_periods, seasonality_mode, holidays_prior_scale, seas
     return forecast
 
 
-def revenue_test(data:pd.DataFrame, name:list, name_type:str) -> None:
+def revenue_test(data:pd.DataFrame, name:list, name_type:str, y_name:str, significance_level:float=0.01) -> None:
+    """对销售金额或销售量进行检验
+    param:
+        data: 小分类或单品的df数据
+        name: 小分类或单品的名称列表
+        name_type: 'sm_sort_name'或'name'
+        y_name: 'sum_price'或'amount
+    """
     for i in range(len(name)):
         
-        df = data[data[name_type] == name[i]][['busdate', 'sum_price']]
-        df.rename(columns={'busdate': 'ds', 'sum_price': 'y'}, inplace=True)
+        df = data[data[name_type] == name[i]][['busdate', y_name]]
+        df.rename(columns={'busdate': 'ds', y_name: 'y'}, inplace=True)
 
 
         forecast = prophet_model(df, pred_periods, seasonality_mode, holidays_prior_scale, seasonality_prior_scale, holiday, weekly, yearly, monthly, quarterly, daily, weekly_fourier_order, yearly_fourier_order, monthly_fourier_order, quarterly_fourier_order, daily_fourier_order, weekly_prior_scale, yearly_prior_scale, monthly_prior_scale, quarterly_prior_scale, daily_prior_scale, weekly_period, yearly_period,  monthly_period, quarterly_period, daily_period, hourly_period, minutely_period, secondly_period, mcmc_samples, freq, interval_width)
@@ -63,88 +70,107 @@ def revenue_test(data:pd.DataFrame, name:list, name_type:str) -> None:
         if seasonality_mode == 'multiplicative':
             effect = forecast[['ds', 'trend', 'multiplicative_terms']]
             df = df.merge(effect, on=['ds'], how='left')
-            df['revenue_no_effect'] = df['y'] / df['multiplicative_terms'] - df['trend'] + df['trend'].mean()
+            df['y_no_effect'] = df['y'] / df['multiplicative_terms'] - df['trend'] + df['trend'].mean()
         else:
             effect = forecast[['ds', 'trend', 'additive_terms']]
             df = df.merge(effect, on=['ds'], how='left')    
-            df['revenue_no_effect'] = df['y'] - df['additive_terms'] - df['trend'] + df['trend'].mean()    
+            df['y_no_effect'] = df['y'] - df['additive_terms'] - df['trend'] + df['trend'].mean()    
 
 
-        # 用分位距和标准差剔除revenue_no_effect的离群值
-        q1 = df['revenue_no_effect'].quantile(0.25)
-        q3 = df['revenue_no_effect'].quantile(0.75)
+        # 用分位距和标准差剔除y_no_effect的离群值
+        q1 = df['y_no_effect'].quantile(0.25)
+        q3 = df['y_no_effect'].quantile(0.75)
         iqr = q3 - q1
         # 找到离群值
-        outliers = df[(df['revenue_no_effect'] < (q1 - 1.5 * iqr)) | (df['revenue_no_effect'] > (q3 + 1.5 * iqr))]
+        outliers = df[(df['y_no_effect'] < (q1 - 1.5 * iqr)) | (df['y_no_effect'] > (q3 + 1.5 * iqr))]
         # 对于每一个离群值，找到附近的100个非离群值，计算他们的均值和标准差，然后生成一个随机数来代替这个离群值
         for j in outliers.index:
             # 找到附近100个点的非离群值
-            non_outliers = df[(df['revenue_no_effect'] > (q1 - 1.5 * iqr)) & (df['revenue_no_effect'] < (q3 + 1.5 * iqr)) & (df.index >= j-50) & (df.index <= j+50)]
+            non_outliers = df[(df['y_no_effect'] > (q1 - 1.5 * iqr)) & (df['y_no_effect'] < (q3 + 1.5 * iqr)) & (df.index >= j-50) & (df.index <= j+50)]
             # 计算均值和标准差
-            mean = non_outliers['revenue_no_effect'].mean()
-            std = non_outliers['revenue_no_effect'].std()
+            mean = non_outliers['y_no_effect'].mean()
+            std = non_outliers['y_no_effect'].std()
             # 生成一个随机数来代替这个离群值
-            df.at[j, 'revenue_no_effect'] = np.random.normal(mean, std)
+            df.at[j, 'y_no_effect'] = np.random.normal(mean, std)
 
 
-        # 将revenue_no_effect和y画在一张图上
+        # 将y_no_effect和y画在一张图上
         plt.figure(figsize=(20, 10))
-        plt.plot(df['ds'], df['revenue_no_effect'], label='去掉时间类效应的销售金额')
-        plt.plot(df['ds'], df['y'], label='原始销售金额')
-        # 添加x轴和y轴的标签
-        plt.xlabel('销售日期')
-        plt.ylabel('销售金额')
+        match y_name:
+            case 'sum_price':
+                plt.plot(df['ds'], df['y_no_effect'], label='去掉时间类效应的销售金额')
+                plt.plot(df['ds'], df['y'], label='原始销售金额')
+                # 添加x轴和y轴的标签
+                plt.xlabel('销售日期')
+                plt.ylabel('销售金额')
+                plt.title(f'{name[i]}去掉时间类效应的销售金额和原始销售金额对比')
+            case 'amount':
+                plt.plot(df['ds'], df['y_no_effect'], label='去掉时间类效应的销售量')
+                plt.plot(df['ds'], df['y'], label='原始销售量')
+                # 添加x轴和y轴的标签
+                plt.xlabel('销售日期')
+                plt.ylabel('销售量')
+                plt.title(f'{name[i]}去掉时间类效应的销售量和原始销售量对比')
+            case _:
+                raise ValueError(f"Unexpected y_name: {y_name}")
+
         # 显示图例
         plt.legend(loc='upper right')
         # 保存图形为SVG格式
         match name_type:
             case 'sm_sort_name':
-                plt.savefig(paths[2] + f'{name[i]}_销售金额对比.svg', format='svg')
+                plt.savefig(paths[2] + f'{name[i]}_{y_name}对比.svg', format='svg')
             case 'name':
-                plt.savefig(paths[2+1] + f'{name[i]}_销售金额对比.svg', format='svg')
+                plt.savefig(paths[2+1] + f'{name[i]}_{y_name}对比.svg', format='svg')
             case _:
                 raise ValueError(f"Unexpected name_type: {name_type}")
         # 显示图形
         plt.show()
 
 
-        # 画出revenue_no_effect的自相关图和偏自相关图
+        # 画出y_no_effect的自相关图和偏自相关图
         fig = plt.figure(figsize=(12, 8))
 
         ax1 = fig.add_subplot(211)
-        sm.graphics.tsa.plot_acf(df['revenue_no_effect'], lags=int(len(df)-1), ax=ax1)
+        sm.graphics.tsa.plot_acf(df['y_no_effect'], lags=int(len(df)-1), ax=ax1)
         ax1.set_title(f'Autocorrelation_{name[i]}')
         ax1.set_xlabel('Lags')
         ax1.set_ylabel('ACF')
 
         ax2 = fig.add_subplot(212)
-        sm.graphics.tsa.plot_pacf(df['revenue_no_effect'], lags=int(len(df)/2-1), ax=ax2)
+        sm.graphics.tsa.plot_pacf(df['y_no_effect'], lags=int(len(df)/2-1), ax=ax2)
         ax2.set_title(f'Partial Autocorrelation_{name[i]}')
         ax2.set_xlabel('Lags')
         ax2.set_ylabel('PACF')
 
         # 调整子图之间的间距
         plt.subplots_adjust(hspace=0.4)
-
-        plt.suptitle(f'{name[i]}去掉时间类效应的销售金额的自相关图和偏自相关图')
+        match y_name:
+            case 'sum_price':
+                plt.suptitle(f'{name[i]}去掉时间类效应的销售金额的自相关图和偏自相关图')
+            case 'amount':
+                plt.suptitle(f'{name[i]}去掉时间类效应的销售量的自相关图和偏自相关图')
+            case _:
+                raise ValueError(f"Unexpected y_name: {y_name}")
         match name_type:
             case 'sm_sort_name':
-                plt.savefig(paths[4] + f'{name[i]}_去掉时间类效应的销售金额的自相关图和偏自相关图.svg', format='svg')
+                plt.savefig(paths[4] + f'{name[i]}_去掉时间类效应的{y_name}的自相关图和偏自相关图.svg', format='svg')
             case 'name':
-                plt.savefig(paths[4+1] + f'{name[i]}_去掉时间类效应的销售金额的自相关图和偏自相关图.svg', format='svg')
+                plt.savefig(paths[4+1] + f'{name[i]}_去掉时间类效应的{y_name}的自相关图和偏自相关图.svg', format='svg')
             case _:
                 raise ValueError(f"Unexpected name_type: {name_type}")
         plt.show()
 
 
         # 进行ADF检验
-        adf_result = sm.tsa.stattools.adfuller(df['revenue_no_effect'])
+        adf_result = sm.tsa.stattools.adfuller(df['y_no_effect'])
         print(f'adf_result: {adf_result}','\n')
-        print(f'adf_result[1]: {adf_result[1]}','\n')
-        if adf_result[1] < 0.01:
-            print('revenue_no_effect平稳')
+        print(f'P-Value: {adf_result[1]}')
+        if adf_result[1] < significance_level:
+            print(f'所以在{significance_level}的显著性水平下，{y_name}平稳')
         else:
-            print('revenue_no_effect不平稳')
+            print(f'所以在{significance_level}的显著性水平下，{y_name}不平稳')
+            
         # 将adf_result转换为字符串
         adf_result_str = str(adf_result)
         # 创建一个解释性描述
@@ -152,13 +178,13 @@ def revenue_test(data:pd.DataFrame, name:list, name_type:str) -> None:
         # 将adf_result和解释性描述保存为文本文档
         match name_type:
             case 'sm_sort_name':
-                with open(paths[6] + f'{name[i]}_adf_result.txt', 'w') as f:
+                with open(paths[6] + f'{name[i]}_{y_name}_adf_result.txt', 'w') as f:
                     f.write(description + adf_result_str)
             case 'name':
-                with open(paths[6+1] + f'{name[i]}_adf_result.txt', 'w') as f:
+                with open(paths[6+1] + f'{name[i]}_{y_name}_adf_result.txt', 'w') as f:
                     f.write(description + adf_result_str)
             case _:
-                raise ValueError(f"Unexpected name_type: {name_type}")
+                raise ValueError(f"Unexpected name_type: {name_type} or y_name: {y_name}")
 
 
 if __name__ == '__main__': 
@@ -276,5 +302,7 @@ if __name__ == '__main__':
     print(f"sale_sm['sm_sort_name'].nunique(): {sale_sm['sm_sort_name'].nunique()}\nsale_code['name'].nunique(): {sale_code['name'].nunique()}\n")
     
 
-    revenue_test(sale_sm, sm_sort_name, 'sm_sort_name')
-    revenue_test(sale_code, code_name, 'name')
+    revenue_test(sale_sm, sm_sort_name, 'sm_sort_name', 'sum_price')
+    revenue_test(sale_sm, sm_sort_name, 'sm_sort_name', 'amount')
+    revenue_test(sale_code, code_name, 'name', 'sum_price')
+    revenue_test(sale_code, code_name, 'name', 'amount')
