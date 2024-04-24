@@ -63,7 +63,7 @@ if __name__ == '__main__':
         acct_com.to_excel(f'{output_path}/单品日汇总销售.xlsx', index=True)
 
 
-        commodity = pd.read_csv(f'{input_path}/commodity.csv')
+        commodity = pd.read_csv(f'{input_path}commodity.csv')
         # 先转成int64，以免位数超限被转换为负数
         if not isinstance(commodity['code'].iloc[0], str):
             commodity[['code', 'sm_sort', 'md_sort', 'bg_sort']] = commodity[['code', 'sm_sort', 'md_sort', 'bg_sort']].astype('Int64').astype(str)
@@ -72,7 +72,7 @@ if __name__ == '__main__':
         commodity = commodity[~((commodity['sm_sort_name'] == '茄类') & ((commodity['name'].str.contains('番茄')) | (commodity['name'].str.contains('西红柿'))))]
 
 
-        account = pd.read_csv(f'{input_path}/account.csv')
+        account = pd.read_csv(f'{input_path}account.csv')
         # 判断account中code列的数据类型是否为str，如果不是，则转换为str
         if not isinstance(account['code'].iloc[0], str):
             account['code'] = account['code'].astype('Int64').astype(str)
@@ -108,7 +108,7 @@ if __name__ == '__main__':
         commodity.to_excel(f'{output_path}/commodity.xlsx', index=False)
 
 
-        running = pd.read_csv(f'{input_path}/running.csv')
+        running = pd.read_csv(f'{input_path}running.csv')
         if not isinstance(running['code'].iloc[0], str):
             running['code'] = running['code'].astype('Int64').astype(str)
         # running按最终形成基准的commodity中的code进行第一次筛选
@@ -184,7 +184,7 @@ if __name__ == '__main__':
         acct_com.to_excel(f'{output_path}/单品日汇总销售.xlsx', index=True)
 
 
-        commodity = pd.read_csv(f'{input_path}/commodity.csv')
+        commodity = pd.read_csv(f'{input_path}commodity.csv')
         # 先转成int64，以免位数超限被转换为负数
         if not isinstance(commodity['code'].iloc[0], str):
             commodity[['code', 'sm_sort', 'md_sort', 'bg_sort']] = commodity[['code', 'sm_sort', 'md_sort', 'bg_sort']].astype('Int64').astype(str)
@@ -193,7 +193,7 @@ if __name__ == '__main__':
         commodity = commodity[~((commodity['sm_sort_name'] == '茄类') & ((commodity['name'].str.contains('番茄')) | (commodity['name'].str.contains('西红柿'))))]
 
 
-        account = pd.read_csv(f'{input_path}/account.csv')
+        account = pd.read_csv(f'{input_path}account.csv')
         # 判断account中code列的数据类型是否为str，如果不是，则转换为str
         if not isinstance(account['code'].iloc[0], str):
             account['code'] = account['code'].astype('Int64').astype(str)
@@ -229,7 +229,7 @@ if __name__ == '__main__':
         commodity.to_excel(f'{output_path}/commodity.xlsx', index=False)
 
 
-        running = pd.read_csv(f'{input_path}/running.csv')
+        running = pd.read_csv(f'{input_path}running.csv')
         if not isinstance(running['code'].iloc[0], str):
             running['code'] = running['code'].astype('Int64').astype(str)
         # running按最终形成基准的commodity中的code进行第一次筛选

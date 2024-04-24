@@ -18,6 +18,7 @@ sns.set(font='SimHei', font_scale=1)
 
 
 def prophet_model(df, pred_periods, seasonality_mode, holidays_prior_scale, seasonality_prior_scale, holiday, weekly, yearly, monthly, quarterly, daily, weekly_fourier_order, yearly_fourier_order, monthly_fourier_order, quarterly_fourier_order, daily_fourier_order, weekly_prior_scale, yearly_prior_scale, monthly_prior_scale, quarterly_prior_scale, daily_prior_scale, weekly_period, yearly_period,  monthly_period, quarterly_period, daily_period, hourly_period, minutely_period, secondly_period, mcmc_samples, freq, interval_width):
+
     m = Prophet(seasonality_mode=seasonality_mode, holidays_prior_scale=holidays_prior_scale, seasonality_prior_scale=seasonality_prior_scale, mcmc_samples=mcmc_samples, interval_width=interval_width)
     if holiday:
         m.add_country_holidays(country_name='CN')
