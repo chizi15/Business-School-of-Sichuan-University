@@ -83,7 +83,7 @@ loss_code = loss_code.astype({'code': 'str'})
 
 
 run_code['sum_price'] = run_code['amount'] * run_code['price']
-acct_code = run_code.groupby(['code', 'busdate'])['amount', 'sum_price'].sum().reset_index()
+acct_code = run_code.groupby(['code', 'busdate'])[['amount', 'sum_price']].sum().reset_index()
 acct_code['price'] = acct_code['sum_price'] / acct_code['amount']
 
 acct_code_sm = acct_code.merge(code_sm, on='code', how='left')
