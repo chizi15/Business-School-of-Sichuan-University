@@ -37,7 +37,7 @@ output_index = 7  # 将前output_index个预测结果作为最终结果
 extend_power = 1 / 5  # 数据扩增的幂次
 interval_width = 0.95  # prophet的置信区间宽度
 last_day = last_day  # 训练集的最后一天+1，即预测集的第一天
-mcmc_samples = 100  # mcmc采样次数
+mcmc_samples = 0  # mcmc采样次数
 days = 30  # 用于计算平均销量的距最后一天的天数
 distributions = [
     "cauchy",
